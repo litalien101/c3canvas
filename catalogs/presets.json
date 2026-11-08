@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "runtime_source": "starter",
+  "assets": [
+    {
+      "id": "female_neutral_body_preset_1",
+      "label": "Female Neutral Body Preset 1",
+      "kind": "body",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/body/female_neutral_body_preset_1/female_neutral_body_preset_1.Fbx",
+      "generated_path": "generated_assets/presets/body/female_neutral_body_preset_1.glb",
+      "generated_report": "generated_assets/presets/body/female_neutral_body_preset_1.json"
+    },
+    {
+      "id": "female_neutral_body_preset_2",
+      "label": "Female Neutral Body Preset 2",
+      "kind": "body",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/body/female_neutral_body_preset_2/female_neutral_body_preset_2.Fbx",
+      "generated_path": "generated_assets/presets/body/female_neutral_body_preset_2.glb",
+      "generated_report": "generated_assets/presets/body/female_neutral_body_preset_2.json"
+    },
+    {
+      "id": "female_neutral_body_preset_3",
+      "label": "Female Neutral Body Preset 3",
+      "kind": "body",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/body/female_neutral_body_preset_3/female_neutral_body_preset_3.Fbx",
+      "generated_path": "generated_assets/presets/body/female_neutral_body_preset_3.glb",
+      "generated_report": "generated_assets/presets/body/female_neutral_body_preset_3.json"
+    },
+    {
+      "id": "female_neutral_body_preset_4",
+      "label": "Female Neutral Body Preset 4",
+      "kind": "body",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/body/female_neutral_body_preset_4/female_neutral_body_preset_4.Fbx",
+      "generated_path": "generated_assets/presets/body/female_neutral_body_preset_4.glb",
+      "generated_report": "generated_assets/presets/body/female_neutral_body_preset_4.json"
+    },
+    {
+      "id": "female_neutral_body_preset_5",
+      "label": "Female Neutral Body Preset 5",
+      "kind": "body",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/body/female_neutral_body_preset_5/female_neutral_body_preset_5.Fbx",
+      "generated_path": "generated_assets/presets/body/female_neutral_body_preset_5.glb",
+      "generated_report": "generated_assets/presets/body/female_neutral_body_preset_5.json"
+    },
+    {
+      "id": "female_neutral_head_preset_1",
+      "label": "Female Neutral Head Preset 1",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_1/female_neutral_head_preset_1.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_1.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_1.json"
+    },
+    {
+      "id": "female_neutral_head_preset_2",
+      "label": "Female Neutral Head Preset 2",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_2/female_neutral_head_preset_2.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_2.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_2.json"
+    },
+    {
+      "id": "female_neutral_head_preset_3",
+      "label": "Female Neutral Head Preset 3",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_3/female_neutral_head_preset_3.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_3.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_3.json"
+    },
+    {
+      "id": "female_neutral_head_preset_4",
+      "label": "Female Neutral Head Preset 4",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_4/female_neutral_head_preset_4.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_4.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_4.json"
+    },
+    {
+      "id": "female_neutral_head_preset_5",
+      "label": "Female Neutral Head Preset 5",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_5/female_neutral_head_preset_5.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_5.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_5.json"
+    },
+    {
+      "id": "female_neutral_head_preset_6",
+      "label": "Female Neutral Head Preset 6",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_6/female_neutral_head_preset_6.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_6.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_6.json"
+    },
+    {
+      "id": "female_neutral_head_preset_7",
+      "label": "Female Neutral Head Preset 7",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_7/female_neutral_head_preset_7.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_7.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_7.json"
+    },
+    {
+      "id": "female_neutral_head_preset_8",
+      "label": "Female Neutral Head Preset 8",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_8/female_neutral_head_preset_8.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_8.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_8.json"
+    },
+    {
+      "id": "female_neutral_head_preset_9",
+      "label": "Female Neutral Head Preset 9",
+      "kind": "head",
+      "profile": "female_neutral",
+      "runtime_source_path": "source_archive/presets/female_presets/head/female_neutral_head_preset_9/female_neutral_head_preset_9.Fbx",
+      "generated_path": "generated_assets/presets/head/female_neutral_head_preset_9.glb",
+      "generated_report": "generated_assets/presets/head/female_neutral_head_preset_9.json"
+    },
+    {
+      "id": "male_neutral_body_preset_1",
+      "label": "Male Neutral Body Preset 1",
+      "kind": "body",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/body/male_neutral_body_preset_1/male_neutral_body_preset_1.Fbx",
+      "generated_path": "generated_assets/presets/body/male_neutral_body_preset_1.glb",
+      "generated_report": "generated_assets/presets/body/male_neutral_body_preset_1.json"
+    },
+    {
+      "id": "male_neutral_head_preset_1",
+      "label": "Male Neutral Head Preset 1",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_1/male_neutral_head_preset_1.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_1.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_1.json"
+    },
+    {
+      "id": "male_neutral_head_preset_2",
+      "label": "Male Neutral Head Preset 2",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_2/male_neutral_head_preset_2.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_2.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_2.json"
+    },
+    {
+      "id": "male_neutral_head_preset_3",
+      "label": "Male Neutral Head Preset 3",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_3/male_neutral_head_preset_3.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_3.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_3.json"
+    },
+    {
+      "id": "male_neutral_head_preset_4",
+      "label": "Male Neutral Head Preset 4",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_4/male_neutral_head_preset_4.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_4.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_4.json"
+    },
+    {
+      "id": "male_neutral_head_preset_5",
+      "label": "Male Neutral Head Preset 5",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_5/male_neutral_head_preset_5.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_5.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_5.json"
+    },
+    {
+      "id": "male_neutral_head_preset_6",
+      "label": "Male Neutral Head Preset 6",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_6/male_neutral_head_preset_6.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_6.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_6.json"
+    },
+    {
+      "id": "male_neutral_head_preset_7",
+      "label": "Male Neutral Head Preset 7",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_7/male_neutral_head_preset_7.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_7.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_7.json"
+    },
+    {
+      "id": "male_neutral_head_preset_8",
+      "label": "Male Neutral Head Preset 8",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_8/male_neutral_head_preset_8.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_8.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_8.json"
+    },
+    {
+      "id": "male_neutral_head_preset_9",
+      "label": "Male Neutral Head Preset 9",
+      "kind": "head",
+      "profile": "male_neutral",
+      "runtime_source_path": "source_archive/presets/male_presets/head/male_neutral_head_preset_9/male_neutral_head_preset_9.Fbx",
+      "generated_path": "generated_assets/presets/head/male_neutral_head_preset_9.glb",
+      "generated_report": "generated_assets/presets/head/male_neutral_head_preset_9.json"
+    },
+    {
+      "id": "male_strong_body_preset_1",
+      "label": "Male Strong Body Preset 1",
+      "kind": "body",
+      "profile": "male_strong",
+      "runtime_source_path": "source_archive/presets/male_presets/body/male_strong_body_preset_1/male_strong_body_preset_1.Fbx",
+      "generated_path": "generated_assets/presets/body/male_strong_body_preset_1.glb",
+      "generated_report": "generated_assets/presets/body/male_strong_body_preset_1.json"
+    },
+    {
+      "id": "male_strong_body_preset_2",
+      "label": "Male Strong Body Preset 2",
+      "kind": "body",
+      "profile": "male_strong",
+      "runtime_source_path": "source_archive/presets/male_presets/body/male_strong_body_preset_2/male_strong_body_preset_2.Fbx",
+      "generated_path": "generated_assets/presets/body/male_strong_body_preset_2.glb",
+      "generated_report": "generated_assets/presets/body/male_strong_body_preset_2.json"
+    },
+    {
+      "id": "male_strong_body_preset_3",
+      "label": "Male Strong Body Preset 3",
+      "kind": "body",
+      "profile": "male_strong",
+      "runtime_source_path": "source_archive/presets/male_presets/body/male_strong_body_preset_3/male_strong_body_preset_3.Fbx",
+      "generated_path": "generated_assets/presets/body/male_strong_body_preset_3.glb",
+      "generated_report": "generated_assets/presets/body/male_strong_body_preset_3.json"
+    }
+  ]
+}

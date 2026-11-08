@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "neutral_assets": [
+    {
+      "id": "female-neutral",
+      "label": "Female Neutral",
+      "generated_path": "generated_assets/base_character/female_neutral.glb"
+    },
+    {
+      "id": "male-neutral",
+      "label": "Male Neutral",
+      "generated_path": "generated_assets/base_character/male_neutral.glb"
+    },
+    {
+      "id": "rlcc3plus-preview",
+      "label": "RL CC3 Plus Preview",
+      "generated_path": "generated_assets/base_character/rlcc3plus_preview.glb"
+    }
+  ]
+}

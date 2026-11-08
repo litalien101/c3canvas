@@ -1,0 +1,38 @@
+{
+  "manifest_version": 1,
+  "project_id": "8f45f3a6-46e6-4ac4-8f3b-4f00c6cfa101",
+  "scene_version": 4,
+  "target_profile": "general_purpose",
+  "components": [
+    {
+      "id": "1d2f0b8b-7f4b-4d4e-a5f7-4cdd2c8a0111",
+      "display_name": "Base Body",
+      "semantic_type": "body",
+      "status": "approved",
+      "parent_id": null,
+      "object_ids": ["98d7d8f5-6aef-465a-ae9c-cf1e1d045bbb"],
+      "dependencies": [],
+      "attachment_targets": [],
+      "revision": 1,
+      "geometry_hash": "example-hash-body-v1",
+      "created_phase_id": "phase-body-uuid"
+    },
+    {
+      "id": "58c9774a-8c8d-4569-bf9b-9deae9f2f012",
+      "display_name": "Jacket",
+      "semantic_type": "garment",
+      "status": "needs_review",
+      "parent_id": null,
+      "object_ids": ["2a6316fa-2d5c-4cfb-9a95-6c56a25aee4a"],
+      "dependencies": ["1d2f0b8b-7f4b-4d4e-a5f7-4cdd2c8a0111"],
+      "attachment_targets": ["1d2f0b8b-7f4b-4d4e-a5f7-4cdd2c8a0111"],
+      "revision": 2,
+      "geometry_hash": "example-hash-jacket-v2",
+      "created_phase_id": "phase-jacket-uuid"
+    }
+  ],
+  "notes": [
+    "Example IDs and hashes are illustrative only.",
+    "The backend manifest is the semantic source of truth; Blender custom properties should mirror component and object IDs."
+  ]
+}

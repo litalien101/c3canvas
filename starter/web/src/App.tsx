@@ -1,0 +1,3034 @@
+import { Component, type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Canvas, useThree } from '@react-three/fiber';
+import { ContactShadows, OrbitControls, OrthographicCamera, PerspectiveCamera, useProgress } from '@react-three/drei';
+import { MOUSE } from 'three';
+import { Activity, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Camera, ChevronDown, ChevronRight, CircleHelp, Crosshair, Download, Ear, Eye, EyeOff, Footprints, FolderOpen, GripVertical, Hand, Home, Info, Layers3, LockKeyhole, Maximize, Minimize, MoveVertical, Palette, Paperclip, PersonStanding, Play, Plus, RotateCcw, ScanFace, Search, Send, Settings, SlidersHorizontal, Sparkles, Star, Sun, Trash2, UserRound, Video, Waves, X, Zap, ZoomIn } from 'lucide-react';
+import { CC3ModelPreview, type CC3MorphControl, type CC3MorphControlSpec, type ModelPartKey } from './CC3ModelPreview';
+
+type ApiComponent = {
+  id: string;
+  display_name: string;
+  semantic_type: string;
+  source_asset?: {
+    asset_id?: ApiAssetId;
+    glb_sha256?: string;
+    morph_control_specs?: CC3MorphControlSpec[];
+    morph_preview_mode?: 'client' | 'server';
+  };
+  cc3_morphs?: Partial<Record<CC3MorphControl, number>>;
+  cc3_preset_id?: string | null;
+  morphs_baked?: boolean;
+  bake_checkpoint_id?: string;
+};
+type ApiAssetId =
+  | 'character_cc3_morphs_v1'
+  | 'character_cc3_male_morphs_v1'
+  | 'character_cc5_rlcc3plus_all_morphs_v1';
+type ApiPhase = { id: string; phase_key: string; title: string; status: string };
+type ApiReference = { id: string; display_name: string; mime_type: string; width: number; height: number };
+type ApiMessage = { id: string; role: 'assistant' | 'user'; content: string; created_at: string };
+type AssistantProposal = {
+  morph_updates: Record<string, number>;
+  appearance_updates: Partial<{ eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null }>;
+};
+type AssistantGuidance = { target_id: string; title: string; message: string };
+const landingCardIds = ['hero', 'assistant', 'new-projects', 'recent-projects', 'workflow'] as const;
+type LandingCardId = typeof landingCardIds[number];
+const defaultLandingCardOrder: LandingCardId[] = [...landingCardIds];
+const landingCardLabels: Record<LandingCardId, string> = {
+  hero: 'Welcome',
+  assistant: 'Canvas assistant',
+  'new-projects': 'New projects',
+  'recent-projects': 'Recent projects',
+  workflow: 'Workflow',
+};
+
+function isLandingCardId(value: unknown): value is LandingCardId {
+  return typeof value === 'string' && landingCardIds.some((id) => id === value);
+}
+
+function loadLandingCardOrder(): LandingCardId[] {
+  try {
+    const stored = localStorage.getItem('c3canvas.dashboard-card-order');
+    if (stored) {
+      const parsed: unknown = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length === landingCardIds.length && parsed.every(isLandingCardId) && new Set(parsed).size === landingCardIds.length) {
+        return parsed;
+      }
+    }
+  } catch {
+    return [...defaultLandingCardOrder];
+  }
+  return [...defaultLandingCardOrder];
+}
+type ChatEntry = {
+  role: 'assistant' | 'user';
+  text: string;
+  proposal?: AssistantProposal;
+  guidance?: AssistantGuidance;
+  interactionWarning?: string;
+  proposalApplied?: boolean;
+};
+type ApiProject = {
+  id: string;
+  name: string;
+  scene_version: number;
+  draft_morphs: Record<CC3MorphControl, number>;
+  draft_revision: number;
+  draft_appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null };
+  base_model_asset_id: ApiAssetId;
+  mode: 'blender';
+  components: ApiComponent[];
+  phases: ApiPhase[];
+  component_plan: { id: string | null; display_name: string; semantic_type: string; optional: boolean }[];
+  planning_metadata?: { summary?: string; warnings?: string[] };
+  references?: ApiReference[];
+  messages?: ApiMessage[];
+};
+type ApiProjectSummary = {
+  id: string;
+  name: string;
+  base_model_asset_id: ApiAssetId;
+  has_character: boolean;
+};
+type ApiBaseModel = {
+  asset_id: ApiAssetId;
+  name: string;
+  detail: string;
+  category: 'character';
+  morph_control_count: number;
+  glb_sha256: string;
+  preview_sha256: string;
+  startup_preview_sha256: string | null;
+  morph_preview_mode: 'client' | 'server';
+  morph_proxy_sha256?: string | null;
+  morph_delta_sha256?: string | null;
+  morph_presets?: { id: string; label: string; glb_path?: string; glb_sha256?: string }[];
+  requires_approval: boolean;
+};
+
+type EyeAsset = {
+  id: string;
+  name: string;
+  category: 'eyes';
+  variant: 'game_multi_uv' | 'game_one_uv' | 'normal';
+  source_path: string;
+  fbx_sha256: string;
+  generated_path: string;
+  generated_sha256: string;
+  file_count: number;
+  attachment_status: 'attachable';
+};
+
+type SkinAsset = {
+  id: string;
+  name: string;
+  category: 'skin';
+  compatible_asset_ids: ApiAssetId[];
+  preview_sha256: string;
+  materials: Record<string, { diffuse: string; normal: string }>;
+};
+
+type ApiHealth = { status: string; blender_available: boolean; blender_error?: string | null };
+type DraftSaveStatus = 'saved' | 'saving' | 'error';
+type PartState = Record<ModelPartKey, { label: string; visible: boolean }>;
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1';
+const SERVER_MORPH_PREVIEW_DEBOUNCE_MS = 350;
+const MORPH_CARD_ARTWORK: Record<string, string> = {
+  shoulder_size: '/shoulder/shoulder_size.png',
+  shoulder_top_peak: '/shoulder/shoulder_top_peak.png',
+  ear_angle_top: '/head/ear/ear_angle_top.png',
+  ear_angle: '/head/ear/ear_angle.png',
+  ear_depth: '/head/ear/ear_depth.png',
+  ear_height: '/head/ear/ear_height.png',
+  ear_reshape: '/head/ear/Ear_Reshape.png',
+  ear_size: '/head/ear/Ear_Size.png',
+  ear_length: '/head/ear/ear_length.png',
+  earlobe: '/head/ear/earlobe.png',
+  eye_angle: '/head/eye/eye_angle.png',
+  eye_depth: '/head/eye/eye_depth.png',
+  eye_height: '/head/eye/eye_height.png',
+  eye_size: '/head/eye/eye_size.png',
+  eye_width: '/head/eye/eye_width.png',
+  eyeball_distance: '/head/eye/eyeball/eyeball_distance.png',
+  eyeball_enlarge: '/head/eye/eyeball/eyeball_enlarge.png',
+  eyeball_enlarge_left: '/head/eye/eyeball/eyeball_enlarge_left.png',
+  eyeball_enlarge_right: '/head/eye/eyeball/eyeball_enlarge_right.png',
+  eyeball_forward_back: '/head/eye/eyeball/eyeball_forward_back.png',
+  eyeball_forward_back_right: '/head/eye/eyeball/eyeball_forward_back_right.png',
+  eyeball_left_right: '/head/eye/eyeball/eyeball_left_right.png',
+  eyeball_side_side_left: '/head/eye/eyeball/eyeball_side_side_left.png',
+  eyeball_side_side_right: '/head/eye/eyeball/eyeball_side_side_right.png',
+  eyeball_up_down: '/head/eye/eyeball/eyeball_up_down.png',
+  eyeball_up_down_left: '/head/eye/eyeball/eyeball_up_down_left.png',
+  eyeball_up_down_right: '/head/eye/eyeball/eyeball_up_down_right.png',
+  brow_angle: '/head/brow/brow_angle.png',
+  brow_depth: '/head/brow/brow_depth.png',
+  brow_height: '/head/brow/brow_height.png',
+  brow_lower: '/head/brow/brow_lower.png',
+  near_brow: '/head/brow/near_brow.png',
+  chin_depth: '/head/chin/chin_depth.png',
+  chin_length: '/head/chin/chin_length.png',
+  chin_width: '/head/chin/chin_width.png',
+  jaw_angle: '/head/jaw/jaw_angle.png',
+  jaw_define_02: '/head/jaw/jaw_define_02.png',
+  jaw_height: '/head/jaw/jaw_height.png',
+  jaw_size: '/head/jaw/jaw_size.png',
+  nose_bridge_depth: '/head/nose/nose_bridge_depth.png',
+  nose_depth: '/head/nose/nose_depth.png',
+  cheek_bones_height: '/head/cheek/cheek_bones_height.png',
+  cheek_bones_size: '/head/cheek/cheek_bones_size.png',
+  cheek_sink: '/head/cheek/cheek_sink.png',
+  cranium_slope: '/head/cranium_slope.png',
+  skull_depth: '/head/skull/skull_depth.png',
+  skull_height: '/head/skull/skull_height.png',
+  skull_width: '/head/skull/skull_width.png',
+  temples_size: '/head/temples/temples_size.png',
+  eye_outer_width_left: '/head/eye/eye_outer_width_left.png',
+  eye_outer_width_right: '/head/eye/eye_outer_width_right.png',
+  eye_lower_depth: '/head/eye/eye_lower_depth.png',
+  eyeball_forward_back_left: '/head/eye/eyeball/eyeball_forward_back_left.png',
+  eyeball_shrink: '/head/eye/eyeball/eyeball_shrink.png',
+  eyes_outer_inner_width: '/head/eye/eyes_outer_inner_width.png',
+  eyes_outer_width: '/head/eye/eyes_outer_width.png',
+  lower_eyelid_up: '/head/eye/eyelid/lower_eyelid_up.png',
+  eyelid_bottom_in_height: '/head/eye/eyelid/eyelid_bottom_in_height.png',
+  eyelash_curl: '/head/eye/eyelash/eyelash_curl.png',
+  eyelash_length: '/head/eye/eyelash/eyelash_length.png',
+  occiput_shape: '/head/skull/Occiput_Shape.png',
+  shoulder_width: '/shoulder_width_icon.png',
+  arm_length: '/arm/arm_length.png',
+  elbow_thin: '/arm/elbow/elbow_thin.png',
+  forearm_inner: '/arm/forearm/forearm_inner.png',
+  forearm_length: '/arm/forearm/forearm_length.png',
+  forearm_size: '/arm/forearm/forearm_size.png',
+  upper_arm_size: '/arm/upper_arm/upper_arm_size.png',
+  upper_arm_length: '/arm/upper_arm/upper_arm_length.png',
+  upperarm_inner: '/arm/upper_arm/upperarm_inner.png',
+  hand_shape: '/hand/hand_shape.png',
+  hand_thickness: '/hand/hand_thickness.png',
+  hand_tone: '/hand/hand_tone.png',
+  proximal_nail_fold: '/hand/nail/proximal_nail_fold.png',
+  palm_edge_slim: '/hand/palm/palm_edge_slim.png',
+  hand_scale: '/hand/hand_scale.png',
+  finger_length: '/hand/finger/finger_length.png',
+  finger_width: '/hand/finger/finger_width.png',
+  fingernail_shape_a: '/hand/finger/fingernail_shape_a.png',
+  fingernail_shape_b: '/hand/finger/fingernail_shape_b.png',
+  neck_length: '/neck/neck_length.png',
+  neck_size: '/neck/neck_size.png',
+  chest_width: '/chest/chest_width.png',
+  chest_depth: '/chest/chest_depth.png',
+  chest_scale: '/chest/chest_scale.png',
+  pectoral_size: '/chest/pectoral/pectoral_size.png',
+  waist_width: '/waist/waist_width.png',
+  leg_length: '/leg/leg_length.png',
+  calves_size_02: '/leg/calves/Calves_Size_02.png',
+  quadriceps: '/leg/quads/Quadriceps.png',
+  shin_size: '/leg/shin/Shin_Size.png',
+  shin_length: '/leg/shin/shin_length.png',
+  hamstring_correction: '/leg/hamstring/hamstring_correction.png',
+  foot_length: '/foot/foot_length.png',
+  toe_depth: '/foot/toe/toe_depth.png',
+  toe_length: '/foot/toe/toe_length.png',
+  toe_tip_size: '/foot/toe/toe_tip_size.png',
+  toe_width: '/foot/toe/toe_width.png',
+  foot_arch_02: '/foot/Foot_Arch_02.png',
+  ankle_tone: '/leg/ankle/ankle_tone.png',
+  foot_scale: '/leg/foot/foot_scale.png',
+  foot_shape_02: '/leg/foot/foot_shape_02.png',
+  foot_thickness: '/leg/foot/foot_thickness.png',
+  foot_tone: '/leg/foot/foot_tone.png',
+  knee_bone_width: '/leg/knee/knee_bone_width.png',
+  knee_tone: '/leg/knee/knee_tone.png',
+  thigh_lower_inner: '/leg/thigh/thigh_lower_inner.png',
+  thigh_size: '/leg/thigh/thigh_size.png',
+  lip_tone: '/head/mouth/lips/lip_tone.png',
+  mouth_depth: '/head/mouth/mouth_depth.png',
+  mouth_height: '/head/mouth/mouth_height.png',
+  mouth_size: '/head/mouth/mouth_size.png',
+  mouth_width: '/head/mouth/mouth_width.png',
+  glutes_height: '/leg/glutes/glutes_height.png',
+  glutes_size: '/leg/glutes/glutes_size.png',
+  hip_length: '/hips/hip_length.png',
+  abdomen_middle: '/stomach/abdomen_middle.png',
+  torso_length: '/torso/torso_length.png',
+  love_handles: '/love_handles/love_handles.png',
+  navel: '/stomach/navel.png',
+  wrist_size: '/wrist/wrist_size.png',
+};
+const defaultParts: PartState = {
+  body: { label: 'Body, skin and eyelashes', visible: true },
+  eyes: { label: 'Eyes and corneas', visible: true },
+  teeth: { label: 'Upper and lower teeth', visible: true },
+  tongue: { label: 'Tongue', visible: true },
+};
+const HIDDEN_MORPH_CONTROLS = new Set<CC3MorphControl>(['torso_length']);
+const BASIC_CHARACTER_ASSET_ID: ApiAssetId = 'character_cc3_morphs_v1';
+const ADVANCED_CHARACTER_ASSET_ID: ApiAssetId = 'character_cc5_rlcc3plus_all_morphs_v1';
+const MORPH_AREAS = [
+  { id: 'presets', label: 'Presets', icon: Sparkles },
+  { id: 'body', label: 'Body', icon: PersonStanding },
+  { id: 'head', label: 'Head', icon: MoveVertical },
+  { id: 'face', label: 'Face', icon: ScanFace },
+  { id: 'eyes', label: 'Eyes', icon: Eye },
+  { id: 'nose', label: 'Nose', icon: Activity },
+  { id: 'mouth', label: 'Mouth', icon: ScanFace },
+  { id: 'ears', label: 'Ears', icon: Ear },
+  { id: 'arms', label: 'Arms', icon: Activity },
+  { id: 'hands', label: 'Hands', icon: Hand },
+  { id: 'legs', label: 'Legs', icon: PersonStanding },
+  { id: 'feet', label: 'Feet', icon: Footprints },
+  { id: 'tail', label: 'Tail', icon: Waves },
+  { id: 'misc', label: 'Misc', icon: CircleHelp },
+] as const;
+const MORPH_TYPE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'proportions', label: 'Proportions' },
+  { id: 'muscle', label: 'Muscle' },
+  { id: 'physique', label: 'Physique' },
+  { id: 'shape', label: 'Shape' },
+  { id: 'other', label: 'Other' },
+] as const;
+type BodyAreaId = string;
+type MorphLibraryView = 'all' | 'favorites' | 'recent';
+type MorphTypeFilter = typeof MORPH_TYPE_FILTERS[number]['id'];
+
+type MorphControlIdentity = Pick<CC3MorphControlSpec, 'id' | 'label' | 'category'>;
+
+function morphAreaForControl(control: MorphControlIdentity): BodyAreaId {
+  const text = `${control.label} ${control.id}`.toLocaleLowerCase().replaceAll('_', ' ');
+  const rules: readonly [BodyAreaId, RegExp][] = [
+    ['eyes', /\b(eye|eyes|eyelid|eyelash|blink|iris|pupil|squint|gaze|tearline)\b/],
+    ['nose', /\b(nose|nostril|nasal|septum)\b/],
+    ['mouth', /\b(mouth|lip|lips|teeth|tooth|tongue|jaw|chin|smile|frown|sneer|pucker|funnel|viseme|phoneme|cheek|dimple)\b/],
+    ['ears', /\b(ear|ears|earlobe)\b/],
+    ['head', /\b(head|skull|cranium|forehead|temple)\b/],
+    ['face', /\b(face|brow|eyebrow|expression)\b/],
+    ['hands', /\b(hand|hands|finger|thumb|palm|fingernail|nail)\b/],
+    ['arms', /\b(arm|arms|bicep|tricep|forearm|elbow|wrist|clavicle)\b/],
+    ['feet', /\b(foot|feet|toe|toes|heel|instep)\b/],
+    ['legs', /\b(leg|legs|thigh|knee|calf|calves|shin|ankle)\b/],
+    ['tail', /\btail\b/],
+    ['body', /\b(body|height|width|scale|waist|hip|torso|chest|abdomen|muscle|fat|physique|shoulder|neck|back|belly|rib|breast|bust|weight|build)\b/],
+  ];
+  return rules.find(([, pattern]) => pattern.test(text))?.[0] ?? 'misc';
+}
+
+function morphTypeForControl(control: MorphControlIdentity): Exclude<MorphTypeFilter, 'all'> {
+  const text = `${control.label} ${control.id}`.toLocaleLowerCase().replaceAll('_', ' ');
+  if (/\b(muscle|muscular|bicep|tricep|athletic|definition)\b/.test(text)) return 'muscle';
+  if (/\b(physique|fat|weight|build|body type)\b/.test(text)) return 'physique';
+  if (/\b(height|width|length|scale|depth|proportion|size|distance)\b/.test(text)) return 'proportions';
+  if (/\b(shape|round|square|oval|pointed|angular|fullness)\b/.test(text)) return 'shape';
+  return 'other';
+}
+
+function morphInputId(id: string, prefix: string): string {
+  return `${prefix}-${encodeURIComponent(id)}`;
+}
+
+function morphDisplayLabel(label: string): string {
+  if (!label.includes('_')) return label;
+  return label
+    .replace(/^\d+_/, '')
+    .replace(/_L\b/g, ' Left')
+    .replace(/_R\b/g, ' Right')
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b[a-z]/g, (letter) => letter.toLocaleUpperCase());
+}
+
+function summarizeProject(project: ApiProject): ApiProjectSummary {
+  return {
+    id: project.id,
+    name: project.name,
+    base_model_asset_id: project.base_model_asset_id,
+    has_character: project.components.some((component) => Boolean(component.source_asset?.asset_id)),
+  };
+}
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
+async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+    ...options,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const detail = typeof body === 'object' && body && 'detail' in body ? body.detail : null;
+    const message = typeof detail === 'string'
+      ? detail
+      : detail && typeof detail === 'object' && 'message' in detail
+        ? String(detail.message)
+        : Array.isArray(detail)
+          ? detail.map((item) => {
+              if (!item || typeof item !== 'object') return String(item);
+              const path = 'loc' in item && Array.isArray(item.loc) ? item.loc.join('.') : 'request';
+              const error = 'msg' in item ? String(item.msg) : JSON.stringify(item);
+              return `${path}: ${error}`;
+            }).join('; ')
+          : typeof detail === 'object' && detail
+            ? JSON.stringify(detail)
+            : 'Request failed.';
+    throw new ApiRequestError(message, response.status);
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+function PreviewLoadingIndicator({ title = 'Loading character' }: { title?: string }) {
+  const { active, progress, item } = useProgress();
+  if (!active) return null;
+  const currentAsset = item.split('/').pop() || 'Preparing preview';
+  const percentage = Math.round(progress);
+  return (
+    <div className="preview-loading" role="status" aria-live="polite">
+      <span className="preview-loading-spinner" aria-hidden="true" />
+      <div className="preview-loading-copy">
+        <strong>{title}</strong>
+        <span>{currentAsset}</span>
+        <div className="preview-loading-track" role="progressbar" aria-label="Character preview loading" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
+          <span style={{ width: `${percentage}%` }} />
+        </div>
+      </div>
+      <output>{percentage}%</output>
+    </div>
+  );
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: React.ReactNode; resetKey: string },
+  { error: Error | null; resetKey: string }
+> {
+  state = { error: null as Error | null, resetKey: this.props.resetKey };
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { error: Error | null; resetKey: string },
+  ) {
+    if (props.resetKey !== state.resetKey) {
+      return { error: null, resetKey: props.resetKey };
+    }
+    return null;
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('The 3D character preview failed to load.', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return <div className="preview-status is-error" role="alert">Character preview failed: {this.state.error.message}</div>;
+    }
+    return this.props.children;
+  }
+}
+
+function StudioBackdrop() {
+  return (
+    <group>
+      <mesh rotation-x={-Math.PI / 2} position={[0, -0.055, 0]} receiveShadow>
+        <planeGeometry args={[80, 80]} />
+        <meshStandardMaterial color="#242329" roughness={0.92} />
+      </mesh>
+      <mesh position={[0, -0.0345, 0]} receiveShadow>
+        <cylinderGeometry args={[1.16, 1.2, 0.045, 96]} />
+        <meshStandardMaterial color="#29282f" roughness={0.7} metalness={0.12} />
+      </mesh>
+      <mesh position={[0, -0.0045, 0]} receiveShadow>
+        <cylinderGeometry args={[1.08, 1.12, 0.018, 96]} />
+        <meshStandardMaterial color="#34323b" roughness={0.72} metalness={0.08} />
+      </mesh>
+      {[1.12, 0.88, 0.66].map((radius) => (
+        <mesh key={radius} rotation-x={-Math.PI / 2} position={[0, 0.006, 0]}>
+          <ringGeometry args={[radius, radius + 0.012, 96]} />
+          <meshBasicMaterial color="#77747f" transparent opacity={0.22} side={2} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function AdaptiveOrthographicCamera() {
+  const height = useThree((state) => state.size.height);
+  const zoom = Math.max(60, Math.min(210, height / 3.6));
+  return <OrthographicCamera makeDefault position={[0.35, 1.1, 5.2]} zoom={zoom} near={0.01} />;
+}
+
+export default function App() {
+  const [project, setProject] = useState<ApiProject | null>(null);
+  const [savedProjects, setSavedProjects] = useState<ApiProjectSummary[]>([]);
+  const [apiReady, setApiReady] = useState(false);
+  const [blenderAvailable, setBlenderAvailable] = useState(false);
+  const [blenderError, setBlenderError] = useState('');
+  const [apiError, setApiError] = useState('');
+  const [savedProjectsLoading, setSavedProjectsLoading] = useState(true);
+  const [savedProjectsError, setSavedProjectsError] = useState('');
+  const [availableBaseModels, setAvailableBaseModels] = useState<ApiBaseModel[]>([]);
+  const [eyeAssets, setEyeAssets] = useState<EyeAsset[]>([]);
+  const [eyeAssetsLoading, setEyeAssetsLoading] = useState(true);
+  const [eyeAssetsError, setEyeAssetsError] = useState('');
+  const [skinAssets, setSkinAssets] = useState<SkinAsset[]>([]);
+  const [skinAssetsLoading, setSkinAssetsLoading] = useState(true);
+  const [skinAssetsError, setSkinAssetsError] = useState('');
+  const [skinPreviewError, setSkinPreviewError] = useState('');
+  const onSkinPreviewError = useCallback((error: string) => setSkinPreviewError(error), []);
+  const [baseModelsLoading, setBaseModelsLoading] = useState(true);
+  const [baseModelsError, setBaseModelsError] = useState('');
+  const [morphControlsByAsset, setMorphControlsByAsset] = useState<Partial<Record<ApiAssetId, CC3MorphControlSpec[]>>>({});
+  const [morphControlsLoading, setMorphControlsLoading] = useState(true);
+  const [morphControlsError, setMorphControlsError] = useState('');
+  const [projectName, setProjectName] = useState('My Project');
+  const [chat, setChat] = useState<ChatEntry[]>([]);
+  const [message, setMessage] = useState('');
+  const [running, setRunning] = useState(false);
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const appearanceSaveInProgress = useRef(false);
+  const [importingCharacter, setImportingCharacter] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [parts, setParts] = useState(defaultParts);
+  const [morphs, setMorphs] = useState<Record<CC3MorphControl, number>>({});
+  const [activeBodyPresetId, setActiveBodyPresetId] = useState<string | null>(null);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('saved');
+  const [draftSaveError, setDraftSaveError] = useState('');
+  const [draftSaveRetry, setDraftSaveRetry] = useState(0);
+  const [serverMorphPreview, setServerMorphPreview] = useState<{
+    url: string;
+    projectId: string;
+    componentId: string;
+    sceneVersion: number;
+  } | null>(null);
+  const [serverMorphPreviewStatus, setServerMorphPreviewStatus] = useState<'idle' | 'updating' | 'error'>('idle');
+  const [serverMorphPreviewError, setServerMorphPreviewError] = useState('');
+  const [clientMorphPreviewStatus, setClientMorphPreviewStatus] = useState<'idle' | 'updating' | 'error'>('idle');
+  const [clientMorphPreviewError, setClientMorphPreviewError] = useState('');
+  const onClientMorphPreviewState = useCallback((status: 'idle' | 'updating' | 'error', error: string) => {
+    setClientMorphPreviewStatus(status);
+    setClientMorphPreviewError(error);
+  }, []);
+  const [morphPreviewRetry, setMorphPreviewRetry] = useState(0);
+  const [morphPreviewEnabled, setMorphPreviewEnabled] = useState(false);
+  const [morphInteractionActive, setMorphInteractionActive] = useState(false);
+  const [selectedBodyArea, setSelectedBodyArea] = useState<BodyAreaId>('body');
+  const [morphMode, setMorphMode] = useState<'basic' | 'advanced'>('basic');
+  const [morphSearch, setMorphSearch] = useState('');
+  const [morphLibraryView, setMorphLibraryView] = useState<MorphLibraryView>('all');
+  const [morphTypeFilter, setMorphTypeFilter] = useState<MorphTypeFilter>('all');
+  const [selectedMorphId, setSelectedMorphId] = useState<CC3MorphControl | null>(null);
+  const [favoriteMorphIds, setFavoriteMorphIds] = useState<string[]>([]);
+  const [recentMorphIds, setRecentMorphIds] = useState<string[]>([]);
+  const [cameraKey, setCameraKey] = useState(0);
+  const [cameraMode, setCameraMode] = useState<'orbit' | 'pan' | 'zoom'>('orbit');
+  const [cameraProjection, setCameraProjection] = useState<'perspective' | 'orthographic'>('perspective');
+  const [characterDockWidth, setCharacterDockWidth] = useState(() => Math.min(760, Math.max(620, window.innerWidth * 0.54 - 86)));
+  const [characterDockResizing, setCharacterDockResizing] = useState(false);
+  const [lightingPreset, setLightingPreset] = useState<'cool' | 'warm'>('cool');
+  const [fillLightsEnabled, setFillLightsEnabled] = useState(true);
+  const [viewportFullscreen, setViewportFullscreen] = useState(false);
+  const [viewportControlError, setViewportControlError] = useState('');
+  const [selectedPart, setSelectedPart] = useState<ModelPartKey | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectStep, setNewProjectStep] = useState<'asset-types' | 'character-setup'>('asset-types');
+  const [projectCreationError, setProjectCreationError] = useState('');
+  const [selectedBaseModel, setSelectedBaseModel] = useState<ApiBaseModel['asset_id'] | null>(null);
+  const [studioSection, setStudioSection] = useState<'scene' | 'models'>('models');
+  const [customizationCategory, setCustomizationCategory] = useState<'body' | 'eyes' | 'skin' | 'hair' | 'clothing' | 'accessories'>('body');
+  const [savedProjectsOpen, setSavedProjectsOpen] = useState(false);
+  const [landingSection, setLandingSection] = useState<'home' | 'projects'>('home');
+  const [showAllLandingProjects, setShowAllLandingProjects] = useState(false);
+  const [landingCardOrder, setLandingCardOrder] = useState<LandingCardId[]>(loadLandingCardOrder);
+  const [landingCardStorageError, setLandingCardStorageError] = useState('');
+  const [draggingLandingCard, setDraggingLandingCard] = useState<LandingCardId | null>(null);
+  const [landingDropTarget, setLandingDropTarget] = useState<LandingCardId | null>(null);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [activeGuidance, setActiveGuidance] = useState<AssistantGuidance | null>(null);
+  const [guidancePosition, setGuidancePosition] = useState<{ left: number; top: number; arrowLeft: number; placement: 'above' | 'below' } | null>(null);
+  const [composerDragging, setComposerDragging] = useState(false);
+  const [composerSize, setComposerSize] = useState({ width: 420, height: 400 });
+  const [composerPosition, setComposerPosition] = useState<{ left: number; top: number } | null>(null);
+  const projectNameInput = useRef<HTMLInputElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
+  const suppressChatToggleClick = useRef(false);
+  const landingCardDragRef = useRef<{ cardId: LandingCardId; pointerId: number; startX: number; startY: number; moved: boolean; target: LandingCardId | null } | null>(null);
+  const morphPreviewRequestId = useRef(0);
+  const morphPreviewAbortController = useRef<AbortController | null>(null);
+  const draftSaveInFlight = useRef(false);
+  const activeProjectId = useRef<string | null>(null);
+  activeProjectId.current = project?.id ?? null;
+  const latestMorphs = useRef(morphs);
+  latestMorphs.current = morphs;
+  const morphPreviewRetryTimeout = useRef<number | null>(null);
+  const morphPreviewObjectUrl = useRef<string | null>(null);
+  const composerDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+    started: boolean;
+    wasCollapsed: boolean;
+  } | null>(null);
+  const composerResizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const projectAssetId = project?.base_model_asset_id
+    ?? project?.components.find((item) => item.source_asset?.asset_id)?.source_asset?.asset_id;
+  const activeAssetId = projectAssetId ?? selectedBaseModel;
+  const morphControlsAssetId = activeAssetId ?? 'character_cc3_morphs_v1';
+  const body = project?.components.find((item) => item.semantic_type === 'body')
+    ?? project?.components.find((item) => item.source_asset?.asset_id === projectAssetId);
+  const isCc5FullMorphAsset = morphControlsAssetId === 'character_cc5_rlcc3plus_all_morphs_v1';
+  const previewModelInfo = availableBaseModels.find((model) => model.asset_id === activeAssetId)
+    ?? availableBaseModels.find((model) => model.asset_id === 'character_cc3_morphs_v1')
+    ?? null;
+  const cc5ModelInfo = availableBaseModels.find((model) => model.asset_id === 'character_cc5_rlcc3plus_all_morphs_v1');
+  const bodyPresets = cc5ModelInfo?.morph_presets?.length ? cc5ModelInfo.morph_presets : previewModelInfo?.morph_presets ?? [];
+  const morphPreviewMode = isCc5FullMorphAsset
+    ? availableBaseModels.find((model) => model.asset_id === projectAssetId)?.morph_preview_mode
+      ?? body?.source_asset?.morph_preview_mode
+      ?? 'server'
+    : body?.source_asset?.morph_preview_mode ?? previewModelInfo?.morph_preview_mode ?? 'client';
+  const controls = body?.source_asset?.morph_control_specs ?? morphControlsByAsset[morphControlsAssetId] ?? [];
+  const visibleControls = useMemo(
+    () => controls.filter(({ id }) => isCc5FullMorphAsset || !HIDDEN_MORPH_CONTROLS.has(id)),
+    [controls, isCc5FullMorphAsset],
+  );
+  const visibleMorphControlCount = visibleControls.length;
+  const savedMorphs = body?.cc3_morphs ?? project?.draft_morphs ?? {};
+  const savedBodyPresetId = body?.cc3_preset_id ?? null;
+  const morphAreas = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const control of visibleControls) {
+      const area = morphAreaForControl(control);
+      counts.set(area, (counts.get(area) ?? 0) + 1);
+    }
+    return MORPH_AREAS
+      .filter(({ id }) => id === 'presets' || counts.has(id))
+      .map((area) => ({
+        ...area,
+        count: area.id === 'presets' ? bodyPresets.length : counts.get(area.id) ?? 0,
+      }));
+  }, [bodyPresets.length, visibleControls]);
+  const activeBodyArea = morphAreas.find(({ id }) => id === selectedBodyArea) ?? morphAreas[0];
+  const bodyAreaControls = useMemo(
+    () => visibleControls.filter((control) => morphAreaForControl(control) === activeBodyArea?.id),
+    [activeBodyArea?.id, visibleControls],
+  );
+  const morphLibraryScopeControls = useMemo(() => {
+    const query = morphSearch.trim().toLocaleLowerCase();
+    return visibleControls.filter(({ id, label, category }) => {
+      if (!query && morphAreaForControl({ id, label, category }) !== activeBodyArea?.id) return false;
+      if (morphTypeFilter !== 'all' && morphTypeForControl({ id, label, category }) !== morphTypeFilter) return false;
+      return !query || `${label} ${category} ${id}`.toLocaleLowerCase().includes(query);
+    });
+  }, [activeBodyArea?.id, morphSearch, morphTypeFilter, visibleControls]);
+  const visibleLibraryControls = useMemo(
+    () => morphLibraryScopeControls.filter(({ id }) => (
+      morphLibraryView === 'favorites'
+        ? favoriteMorphIds.includes(id)
+        : morphLibraryView !== 'recent' || recentMorphIds.includes(id)
+    )),
+    [favoriteMorphIds, morphLibraryScopeControls, morphLibraryView, recentMorphIds],
+  );
+  const morphLibraryCounts = useMemo(() => ({
+    all: morphLibraryScopeControls.length,
+    favorites: morphLibraryScopeControls.filter(({ id }) => favoriteMorphIds.includes(id)).length,
+    recent: morphLibraryScopeControls.filter(({ id }) => recentMorphIds.includes(id)).length,
+  }), [favoriteMorphIds, morphLibraryScopeControls, recentMorphIds]);
+  const displayedLibraryControls = morphMode === 'basic'
+    ? visibleLibraryControls.slice(0, 12)
+    : visibleLibraryControls;
+  const selectedMorph = displayedLibraryControls.find(({ id }) => id === selectedMorphId)
+    ?? displayedLibraryControls[0];
+  const relatedMorphs = useMemo(() => {
+    if (!selectedMorph) return [];
+    const terms = selectedMorph.label.toLocaleLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2);
+    return displayedLibraryControls
+      .filter((control) => control.id !== selectedMorph.id && morphAreaForControl(control) === morphAreaForControl(selectedMorph))
+      .map((control) => ({
+        control,
+        score: control.label.toLocaleLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2 && terms.includes(term)).length,
+      }))
+      .sort((a, b) => b.score - a.score || a.control.label.localeCompare(b.control.label))
+      .slice(0, 3)
+      .map(({ control }) => control);
+  }, [displayedLibraryControls, selectedMorph]);
+  const activeCategoryHasChanges = bodyAreaControls.some(({ id }) => (morphs[id] ?? 0) !== 0);
+  const hasCharacter = Boolean(body);
+  const hasActiveProject = project !== null;
+  const morphsBaked = body?.morphs_baked === true;
+  const serverMorphsNeedAssembly = morphPreviewMode === 'server' && !hasCharacter;
+  const morphControlsDisabled = morphsBaked || serverMorphsNeedAssembly;
+  const hasNonNeutralMorphs = controls.some(({ id }) => (morphs[id] ?? 0) !== 0);
+  const morphPreviewAssetId = body?.source_asset?.asset_id ?? previewModelInfo?.asset_id;
+  const morphPreviewAssetHash = body?.source_asset?.glb_sha256 ?? previewModelInfo?.glb_sha256;
+  const hasCc5ClientMorphProxy = isCc5FullMorphAsset
+    && morphPreviewMode === 'client'
+    && Boolean(previewModelInfo?.morph_proxy_sha256 && previewModelInfo.morph_delta_sha256);
+  const cc5MorphProxyUrl = hasCc5ClientMorphProxy && morphPreviewAssetId && morphPreviewAssetHash
+    ? `${API_BASE}/models/${morphPreviewAssetId}/morph-proxy?sha256=${morphPreviewAssetHash}&proxy_sha256=${previewModelInfo?.morph_proxy_sha256}`
+    : null;
+  const morphPresetDeltaBaseUrl = hasCc5ClientMorphProxy && morphPreviewAssetId && bodyPresets.length > 0
+    ? `${API_BASE}/models/${morphPreviewAssetId}/morph-presets`
+    : null;
+  const clientMorphControls = useMemo(
+    () => morphPresetDeltaBaseUrl
+      ? [
+        ...controls,
+        ...bodyPresets.map(({ id, label }): CC3MorphControlSpec => ({
+          id,
+          label,
+          category: 'Presets',
+          minimum: 0,
+          maximum: 1,
+          positive_shape_key: null,
+          negative_shape_key: null,
+          isPreset: true,
+        })),
+      ]
+      : controls,
+    [bodyPresets, controls, morphPresetDeltaBaseUrl],
+  );
+  const clientMorphValues = useMemo(
+    () => morphPresetDeltaBaseUrl
+      ? {
+        ...morphs,
+        ...Object.fromEntries(bodyPresets.map(({ id }) => [id, activeBodyPresetId === id ? 1 : 0])),
+      }
+      : morphs,
+    [activeBodyPresetId, bodyPresets, morphPresetDeltaBaseUrl, morphs],
+  );
+  const previewUrl = hasCharacter && project
+    ? `${API_BASE}/projects/${project.id}/preview?scene_version=${project.scene_version}`
+    : cc5MorphProxyUrl && !morphsBaked
+    ? cc5MorphProxyUrl
+    : previewModelInfo
+    ? previewModelInfo.startup_preview_sha256
+      ? `${API_BASE}/models/${previewModelInfo.asset_id}/startup-preview?sha256=${previewModelInfo.glb_sha256}&preview_sha256=${previewModelInfo.startup_preview_sha256}`
+      : `${API_BASE}/models/${previewModelInfo.asset_id}/morph-preview?sha256=${previewModelInfo.glb_sha256}&preview_sha256=${previewModelInfo.preview_sha256}`
+    : null;
+  const morphPreviewUrl = (
+    morphPreviewEnabled
+    || (hasCc5ClientMorphProxy && hasNonNeutralMorphs)
+    || (hasCc5ClientMorphProxy && activeBodyPresetId !== null)
+  )
+    && !morphsBaked && morphPreviewAssetId && morphPreviewAssetHash
+    && morphPreviewMode === 'client'
+    ? hasCc5ClientMorphProxy
+      ? cc5MorphProxyUrl
+      : `${API_BASE}/models/${morphPreviewAssetId}/morph-preview?sha256=${morphPreviewAssetHash}&preview_sha256=${previewModelInfo?.preview_sha256 ?? morphPreviewAssetHash}`
+    : null;
+  const morphDeltaBaseUrl = hasCc5ClientMorphProxy && morphPreviewAssetId
+    ? `${API_BASE}/models/${morphPreviewAssetId}/morph-deltas/`
+    : null;
+  const morphDeltaSha256 = hasCc5ClientMorphProxy ? previewModelInfo?.morph_delta_sha256 ?? null : null;
+  const morphPresetDeltaSha256 = morphPresetDeltaBaseUrl
+    ? previewModelInfo?.morph_delta_sha256 ?? null
+    : null;
+  const referencePlan = project?.phases.find((phase) => phase.phase_key === 'reference_plan');
+  const reviewPhase = project?.phases.find((phase) => phase.status === 'awaiting_review');
+  const morphsDirty = controls.some(({ id }) => (morphs[id] ?? 0) !== (savedMorphs[id] ?? 0));
+  const bodyPresetDirty = activeBodyPresetId !== savedBodyPresetId;
+  const serverMorphPreviewUrl = serverMorphPreview
+    && serverMorphPreview.projectId === project?.id
+    && serverMorphPreview.componentId === body?.id
+    && serverMorphPreview.sceneVersion === project?.scene_version
+    && (morphsDirty || bodyPresetDirty)
+    ? serverMorphPreview.url
+    : null;
+  const displayPreviewUrl = serverMorphPreviewUrl ?? previewUrl;
+  const selectedDraftEye = project?.draft_appearance?.eye_asset_id
+    ? eyeAssets.find(({ id }) => id === project.draft_appearance.eye_asset_id)
+    : null;
+  const eyePreviewUrl = selectedDraftEye
+    ? `${API_BASE}/assets/eyes/${encodeURIComponent(selectedDraftEye.id)}/preview?sha256=${encodeURIComponent(selectedDraftEye.generated_sha256)}`
+    : null;
+  const selectedDraftSkin = project?.draft_appearance?.skin_asset_id
+    ? skinAssets.find(({ id }) => id === project.draft_appearance.skin_asset_id)
+    : null;
+  const skinPreview = useMemo(() => selectedDraftSkin
+    && selectedDraftSkin.compatible_asset_ids.includes(project?.base_model_asset_id ?? 'character_cc3_morphs_v1')
+    ? {
+      materials: Object.fromEntries(Object.entries(selectedDraftSkin.materials).map(([materialName, hashes]) => [
+        materialName,
+        {
+          diffuse: `${API_BASE}/assets/skins/${encodeURIComponent(selectedDraftSkin.id)}/textures/${encodeURIComponent(materialName)}/diffuse?sha256=${encodeURIComponent(hashes.diffuse)}`,
+          normal: `${API_BASE}/assets/skins/${encodeURIComponent(selectedDraftSkin.id)}/textures/${encodeURIComponent(materialName)}/normal?sha256=${encodeURIComponent(hashes.normal)}`,
+        },
+      ])),
+    }
+    : null, [project?.base_model_asset_id, selectedDraftSkin]);
+  const visibleParts = useMemo(
+    () => Object.fromEntries(Object.entries(parts).map(([key, part]) => [key, part.visible])) as Record<ModelPartKey, boolean>,
+    [parts],
+  );
+  const otherSavedProjects = savedProjects.filter((item) => item.id !== project?.id);
+  const selectedBaseModelInfo = availableBaseModels.find((model) => model.asset_id === selectedBaseModel) ?? null;
+  const orderedBaseModels = useMemo(() => [...availableBaseModels].sort((left, right) => {
+    const rank = (assetId: ApiAssetId) => assetId === BASIC_CHARACTER_ASSET_ID
+      ? 0
+      : assetId === ADVANCED_CHARACTER_ASSET_ID ? 1 : 2;
+    return rank(left.asset_id) - rank(right.asset_id);
+  }), [availableBaseModels]);
+  const activeModelName = projectAssetId
+    ? availableBaseModels.find((model) => model.asset_id === projectAssetId)?.name
+      ?? (projectAssetId === 'character_cc3_male_morphs_v1' ? 'CC3 Base Male' : 'CC3 Base Female')
+    : 'CC3 Character';
+  useEffect(() => {
+    const requestId = ++morphPreviewRequestId.current;
+    morphPreviewAbortController.current?.abort();
+    if (morphPreviewRetryTimeout.current !== null) {
+      window.clearTimeout(morphPreviewRetryTimeout.current);
+      morphPreviewRetryTimeout.current = null;
+    }
+
+    if (
+      !project
+      || !body
+      || !morphsDirty
+      || morphsBaked
+      || morphPreviewMode !== 'server'
+      || !body.source_asset?.asset_id
+    ) {
+      if (morphPreviewObjectUrl.current) {
+        URL.revokeObjectURL(morphPreviewObjectUrl.current);
+        morphPreviewObjectUrl.current = null;
+      }
+      setServerMorphPreview(null);
+      setServerMorphPreviewStatus('idle');
+      setServerMorphPreviewError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    morphPreviewAbortController.current = controller;
+    setServerMorphPreviewStatus('updating');
+    setServerMorphPreviewError('');
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/projects/${project.id}/morph-preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ morphs }),
+          signal: controller.signal,
+        });
+        if (response.status === 429) {
+          if (requestId === morphPreviewRequestId.current) {
+            morphPreviewRetryTimeout.current = window.setTimeout(() => {
+              morphPreviewRetryTimeout.current = null;
+              setMorphPreviewRetry((attempt) => attempt + 1);
+            }, 1000);
+          }
+          return;
+        }
+        if (!response.ok) {
+          const responseBody = await response.json().catch(() => null);
+          const detail = responseBody && typeof responseBody === 'object' && 'detail' in responseBody
+            ? responseBody.detail
+            : null;
+          const message = detail && typeof detail === 'object' && 'message' in detail
+            ? String(detail.message)
+            : 'Could not update the character preview.';
+          throw new Error(message);
+        }
+
+        const preview = await response.blob();
+        if (requestId !== morphPreviewRequestId.current) return;
+        if (preview.size === 0 || !response.headers.get('content-type')?.includes('model/gltf-binary')) {
+          throw new Error('Blender returned an invalid character preview.');
+        }
+
+        const url = URL.createObjectURL(preview);
+        const previousUrl = morphPreviewObjectUrl.current;
+        morphPreviewObjectUrl.current = url;
+        setServerMorphPreview({
+          url,
+          projectId: project.id,
+          componentId: body.id,
+          sceneVersion: project.scene_version,
+        });
+        setServerMorphPreviewStatus('idle');
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+      } catch (error) {
+        if (controller.signal.aborted || requestId !== morphPreviewRequestId.current) return;
+        setServerMorphPreviewError(error instanceof Error ? error.message : 'Could not update the character preview.');
+        setServerMorphPreviewStatus('error');
+      }
+    }, SERVER_MORPH_PREVIEW_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+      if (morphPreviewRetryTimeout.current !== null) {
+        window.clearTimeout(morphPreviewRetryTimeout.current);
+        morphPreviewRetryTimeout.current = null;
+      }
+    };
+  }, [
+    body,
+    morphPreviewMode,
+    morphPreviewRetry,
+    morphs,
+    morphsBaked,
+    morphsDirty,
+    project,
+  ]);
+  useEffect(() => {
+    if (!project || hasCharacter || controls.length === 0 || !morphsDirty || morphInteractionActive) return;
+    const projectId = project.id;
+    const revision = project.draft_revision ?? 0;
+    const values = Object.fromEntries(controls.map(({ id }) => [id, morphs[id] ?? 0]));
+    setDraftSaveStatus('saving');
+    setDraftSaveError('');
+    const timeout = window.setTimeout(async () => {
+      if (draftSaveInFlight.current) {
+        setDraftSaveRetry((attempt) => attempt + 1);
+        return;
+      }
+      draftSaveInFlight.current = true;
+      try {
+        const saved = await requestJson<ApiProject>(`/projects/${projectId}/draft-morphs`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            expected_draft_revision: revision,
+            morphs: values,
+          }),
+        });
+        setProject((current) => current?.id === projectId
+          ? { ...current, draft_morphs: saved.draft_morphs, draft_revision: saved.draft_revision }
+          : current);
+        if (controls.every(({ id }) => (latestMorphs.current[id] ?? 0) === values[id])) {
+          setDraftSaveStatus('saved');
+        }
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 409) {
+          const current = await requestJson<ApiProject>(`/projects/${projectId}`);
+          setProject((loaded) => loaded?.id === projectId
+            ? { ...loaded, draft_morphs: current.draft_morphs, draft_revision: current.draft_revision }
+            : loaded);
+          setDraftSaveStatus('saving');
+          return;
+        }
+        setDraftSaveStatus('error');
+        setDraftSaveError(error instanceof Error ? error.message : 'Draft slider values could not be saved.');
+      } finally {
+        draftSaveInFlight.current = false;
+      }
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [
+    controls,
+    draftSaveRetry,
+    hasCharacter,
+    morphs,
+    morphInteractionActive,
+    morphsDirty,
+    project?.draft_revision,
+    project?.id,
+  ]);
+  useEffect(() => () => {
+    morphPreviewAbortController.current?.abort();
+    if (morphPreviewRetryTimeout.current !== null) {
+      window.clearTimeout(morphPreviewRetryTimeout.current);
+    }
+    if (morphPreviewObjectUrl.current) URL.revokeObjectURL(morphPreviewObjectUrl.current);
+  }, []);
+  const updateMorph = useCallback((id: CC3MorphControl, value: number) => {
+    if (morphControlsDisabled) return;
+    setMorphs((current) => ({ ...current, [id]: value }));
+    setRecentMorphIds((current) => current[0] === id
+      ? current
+      : [id, ...current.filter((recentId) => recentId !== id)].slice(0, 12));
+    setMorphPreviewEnabled(true);
+  }, [morphControlsDisabled]);
+  useEffect(() => {
+    if (!morphAreas.some(({ id }) => id === selectedBodyArea)) {
+      setSelectedBodyArea(morphAreas.find(({ id }) => id === 'body')?.id ?? morphAreas[0]?.id ?? '');
+    }
+  }, [morphAreas, selectedBodyArea]);
+
+  const toggleMorphFavorite = useCallback((id: CC3MorphControl) => {
+    setFavoriteMorphIds((current) => current.includes(id)
+      ? current.filter((favoriteId) => favoriteId !== id)
+      : [...current, id]);
+  }, []);
+  const resetMorphs = () => {
+    setMorphs(Object.fromEntries(controls.map(({ id }) => [id, 0])));
+  };
+  const resetMorphArea = () => {
+    if (!activeBodyArea) return;
+    setMorphs((current) => {
+      const next = { ...current };
+      for (const { id } of bodyAreaControls) next[id] = 0;
+      return next;
+    });
+  };
+  const resetSelectedMorph = () => {
+    if (selectedMorph) updateMorph(selectedMorph.id, 0);
+  };
+  useEffect(() => {
+    if (!newProjectOpen) return;
+    if (newProjectStep === 'character-setup') projectNameInput.current?.focus({ preventScroll: true });
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !running) setNewProjectOpen(false);
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [newProjectOpen, newProjectStep, running]);
+  useEffect(() => {
+    const guidance = activeGuidance;
+    if (!guidance) return;
+
+    let frame = 0;
+    let retryTimer = 0;
+    let attempts = 0;
+    const positionTarget = () => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-ai-guide-target="${CSS.escape(guidance.target_id)}"]`,
+      );
+      if (!target) {
+        setGuidancePosition(null);
+        return false;
+      }
+
+      const bounds = target.getBoundingClientRect();
+      const tooltipWidth = Math.min(340, window.innerWidth - 24);
+      const tooltipHeight = Math.min(260, window.innerHeight - 24);
+      const placement = bounds.bottom + 12 + tooltipHeight <= window.innerHeight ? 'below' : 'above';
+      const left = Math.min(
+        Math.max(12, bounds.left + bounds.width / 2 - tooltipWidth / 2),
+        Math.max(12, window.innerWidth - tooltipWidth - 12),
+      );
+      const top = placement === 'below'
+        ? bounds.bottom + 12
+        : Math.max(12, bounds.top - tooltipHeight - 12);
+      setGuidancePosition({
+        left,
+        top,
+        placement,
+        arrowLeft: Math.min(
+          Math.max(20, bounds.left + bounds.width / 2 - left),
+          tooltipWidth - 20,
+        ),
+      });
+      return true;
+    };
+
+    const schedulePosition = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        if (!positionTarget()) {
+          window.clearTimeout(retryTimer);
+          if (attempts++ < 15) retryTimer = window.setTimeout(schedulePosition, 250);
+        }
+      });
+    };
+    const initialTimer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-ai-guide-target="${CSS.escape(guidance.target_id)}"]`,
+      );
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      schedulePosition();
+    }, 60);
+    window.addEventListener('resize', schedulePosition);
+    window.addEventListener('scroll', schedulePosition, true);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearTimeout(retryTimer);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedulePosition);
+      window.removeEventListener('scroll', schedulePosition, true);
+    };
+  }, [activeGuidance, controls, customizationCategory, eyeAssets, morphSearch, selectedBodyArea, selectedMorphId, skinAssets, studioSection]);
+  useEffect(() => {
+    if (
+      !newProjectOpen
+      || newProjectStep !== 'character-setup'
+      || selectedBaseModel !== null
+      || availableBaseModels.length === 0
+    ) return;
+    const defaultModel = availableBaseModels.find(({ asset_id }) => asset_id === BASIC_CHARACTER_ASSET_ID)
+      ?? availableBaseModels[0];
+    setSelectedBaseModel(defaultModel.asset_id);
+  }, [availableBaseModels, newProjectOpen, newProjectStep, selectedBaseModel]);
+
+  useEffect(() => {
+    function closeSavedProjectsOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSavedProjectsOpen(false);
+    }
+    window.addEventListener('keydown', closeSavedProjectsOnEscape);
+    return () => window.removeEventListener('keydown', closeSavedProjectsOnEscape);
+  }, []);
+
+  useEffect(() => {
+    function moveComposer(event: PointerEvent) {
+      const resize = composerResizeRef.current;
+      if (resize?.pointerId === event.pointerId) {
+        const minWidth = Math.min(320, window.innerWidth - 24);
+        const minHeight = Math.min(360, window.innerHeight - 80);
+        const maxWidth = Math.max(minWidth, Math.min(760, window.innerWidth - 24));
+        const maxHeight = Math.max(minHeight, Math.min(760, window.innerHeight - 80));
+        setComposerSize({
+          width: Math.min(maxWidth, Math.max(minWidth, resize.width + event.clientX - resize.startX)),
+          height: Math.min(maxHeight, Math.max(minHeight, resize.height + event.clientY - resize.startY)),
+        });
+        return;
+      }
+
+      const drag = composerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag.started && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+      drag.started = true;
+      setComposerDragging(true);
+      const maxLeft = Math.max(8, window.innerWidth - drag.width - 8);
+      const maxTop = Math.max(8, window.innerHeight - drag.height - 8);
+      setComposerPosition({
+        left: Math.min(Math.max(8, event.clientX - drag.offsetX), maxLeft),
+        top: Math.min(Math.max(8, event.clientY - drag.offsetY), maxTop),
+      });
+    }
+
+    function finishComposerDrag(event: PointerEvent) {
+      if (composerResizeRef.current?.pointerId === event.pointerId) {
+        composerResizeRef.current = null;
+        return;
+      }
+      const drag = composerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (drag.started) {
+        suppressChatToggleClick.current = drag.wasCollapsed;
+        if (drag.wasCollapsed) {
+          window.setTimeout(() => { suppressChatToggleClick.current = false; }, 500);
+        }
+        setComposerDragging(false);
+      }
+      composerDragRef.current = null;
+    }
+
+    function cancelComposerDrag(event: PointerEvent) {
+      if (composerResizeRef.current?.pointerId === event.pointerId) {
+        composerResizeRef.current = null;
+        return;
+      }
+      if (composerDragRef.current?.pointerId !== event.pointerId) return;
+      if (composerDragRef.current.started) setComposerDragging(false);
+      composerDragRef.current = null;
+    }
+
+    function keepFloatingComposerInViewport() {
+      setComposerPosition((position) => {
+        if (!position) return null;
+        const bounds = document.querySelector('.chat-widget')?.getBoundingClientRect();
+        if (!bounds) return position;
+        return {
+          left: Math.min(Math.max(8, position.left), Math.max(8, window.innerWidth - bounds.width - 8)),
+          top: Math.min(Math.max(8, position.top), Math.max(8, window.innerHeight - bounds.height - 8)),
+        };
+      });
+    }
+
+    window.addEventListener('pointermove', moveComposer);
+    window.addEventListener('pointerup', finishComposerDrag);
+    window.addEventListener('pointercancel', cancelComposerDrag);
+    window.addEventListener('resize', keepFloatingComposerInViewport);
+    return () => {
+      window.removeEventListener('pointermove', moveComposer);
+      window.removeEventListener('pointerup', finishComposerDrag);
+      window.removeEventListener('pointercancel', cancelComposerDrag);
+      window.removeEventListener('resize', keepFloatingComposerInViewport);
+    };
+  }, []);
+
+  function applyProject(next: ApiProject, resetCamera = true) {
+    const assetComponent = next.components.find((item) => item.source_asset?.asset_id);
+    const selectedAssetId = next.base_model_asset_id
+      ?? assetComponent?.source_asset?.asset_id;
+    if (selectedAssetId) setSelectedBaseModel(selectedAssetId);
+    const savedMorphs = assetComponent?.cc3_morphs ?? next.draft_morphs ?? {};
+    const savedPresetId = assetComponent?.cc3_preset_id ?? next.draft_appearance?.body_preset_id ?? null;
+    const preserveLocalDraft = activeProjectId.current === next.id
+      && !assetComponent
+      && (
+        controls.some(({ id }) => (latestMorphs.current[id] ?? 0) !== (savedMorphs[id] ?? 0))
+        || activeBodyPresetId !== savedPresetId
+      );
+    const preserveLocalPreset = !next.draft_appearance && preserveLocalDraft && savedPresetId === null && activeBodyPresetId !== null;
+    setProject(next);
+    setProjectName(next.name);
+    setActiveBodyPresetId(preserveLocalPreset ? activeBodyPresetId : savedPresetId);
+    if (!preserveLocalDraft) {
+      setMorphs(Object.fromEntries(Object.entries(savedMorphs).map(([id, value]) => [id, value ?? 0])));
+      setDraftSaveStatus('saved');
+      setDraftSaveError('');
+    }
+    setParts(defaultParts);
+    setSelectedPart(assetComponent ? 'body' : null);
+    setMorphPreviewEnabled((enabled) => preserveLocalDraft
+      ? enabled || Object.values(latestMorphs.current).some((value) => value !== 0) || preserveLocalPreset
+      : Object.values(savedMorphs).some((value) => value !== 0) || savedPresetId !== null);
+    if (resetCamera) setCameraKey((key) => key + 1);
+  }
+
+  useEffect(() => {
+    let active = true;
+    requestJson<ApiHealth>('/health').then((health) => {
+      if (!active) return;
+      setApiReady(true);
+      setBlenderAvailable(health.blender_available);
+      setBlenderError(health.blender_error ?? '');
+      setApiError('');
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setApiError(error instanceof Error ? error.message : 'The local Blender API is unavailable.');
+      setApiReady(false);
+      setBlenderAvailable(false);
+    });
+    requestJson<ApiProjectSummary[]>('/projects/summary').then((projects) => {
+      if (!active) return;
+      setSavedProjects(projects);
+      setSavedProjectsError('');
+      setSavedProjectsLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setSavedProjectsError(error instanceof Error ? error.message : 'Saved projects could not be loaded.');
+      setSavedProjectsLoading(false);
+    });
+    requestJson<ApiBaseModel[]>('/models').then((models) => {
+      if (!active) return;
+      const available = models.filter((model) => model.category === 'character');
+      setAvailableBaseModels(available);
+      setSelectedBaseModel((current) => current && available.some((model) => model.asset_id === current)
+        ? current
+        : null);
+      setBaseModelsError('');
+      setBaseModelsLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setBaseModelsError(error instanceof Error ? error.message : 'Available base models could not be loaded.');
+      setBaseModelsLoading(false);
+    });
+    requestJson<EyeAsset[]>('/assets/eyes').then((assets) => {
+      if (!active) return;
+      setEyeAssets(assets);
+      setEyeAssetsError('');
+      setEyeAssetsLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setEyeAssetsError(error instanceof Error ? error.message : 'Eye assets could not be loaded.');
+      setEyeAssetsLoading(false);
+    });
+    requestJson<SkinAsset[]>('/assets/skins').then((assets) => {
+      if (!active) return;
+      setSkinAssets(assets);
+      setSkinAssetsError('');
+      setSkinAssetsLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setSkinAssetsError(error instanceof Error ? error.message : 'Skin assets could not be loaded.');
+      setSkinAssetsLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!hasActiveProject && !selectedBaseModel) {
+      setMorphControlsLoading(false);
+      setMorphControlsError('');
+      return;
+    }
+    if (!availableBaseModels.some((model) => model.asset_id === morphControlsAssetId)) {
+      if (!baseModelsLoading) {
+        setMorphControlsLoading(false);
+        setMorphControlsError(baseModelsError || 'Character morph controls are unavailable for this model.');
+      }
+      return;
+    }
+    if (body?.source_asset?.morph_control_specs?.length) {
+      setMorphControlsLoading(false);
+      setMorphControlsError('');
+      return;
+    }
+    if (morphControlsByAsset[morphControlsAssetId]) {
+      setMorphControlsLoading(false);
+      setMorphControlsError('');
+      return;
+    }
+
+    let active = true;
+    setMorphControlsLoading(true);
+    setMorphControlsError('');
+    requestJson<CC3MorphControlSpec[]>(`/models/${morphControlsAssetId}/morph-controls`).then((assetControls) => {
+      if (!active) return;
+      setMorphControlsByAsset((current) => ({ ...current, [morphControlsAssetId]: assetControls }));
+      setMorphControlsLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setMorphControlsError(error instanceof Error ? error.message : 'Character morph controls could not be loaded.');
+      setMorphControlsLoading(false);
+    });
+    return () => { active = false; };
+  }, [availableBaseModels, baseModelsError, baseModelsLoading, body?.source_asset?.morph_control_specs, hasActiveProject, morphControlsAssetId, morphControlsByAsset, selectedBaseModel]);
+
+  function openNewProject() {
+    setSavedProjectsOpen(false);
+    setProjectCreationError('');
+    setSelectedBaseModel(null);
+    setNewProjectStep('character-setup');
+    setNewProjectOpen(true);
+  }
+
+  async function sendProjectChatMessage(activeProject: ApiProject, text: string, selectedComponentId: string | null): Promise<ChatEntry> {
+    const response = await requestJson<{
+      assistant_message: string;
+      assistant_proposal?: AssistantProposal | null;
+      guidance?: AssistantGuidance | null;
+      interaction_warning?: string | null;
+      project: ApiProject;
+    }>(`/projects/${activeProject.id}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message: text, selected_component_id: selectedComponentId }),
+    });
+    applyProject(response.project);
+    setSavedProjects((projects) => [summarizeProject(response.project), ...projects.filter((item) => item.id !== response.project.id)]);
+    if (response.guidance) showAssistantGuidance(response.guidance);
+    return {
+      role: 'assistant',
+      text: response.assistant_message,
+      proposal: response.assistant_proposal ?? undefined,
+      guidance: response.guidance ?? undefined,
+      interactionWarning: response.interaction_warning ?? undefined,
+    };
+  }
+
+  async function createProjectForAsset(assetId: ApiAssetId, name: string) {
+    const initialPrompt = message.trim();
+    const created = await requestJson<ApiProject>('/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: name.trim() || 'Untitled Character',
+        target_profile: 'general_purpose',
+        base_model_asset_id: assetId,
+      }),
+    });
+    const planned = await requestJson<ApiProject>(`/projects/${created.id}/plan`, { method: 'POST' });
+    setMorphPreviewEnabled(false);
+    applyProject(planned);
+    setProjectName(planned.name);
+    setSelectedBaseModel(assetId);
+    setSavedProjects((projects) => [summarizeProject(planned), ...projects.filter((item) => item.id !== planned.id)]);
+    const welcomeMessage: ChatEntry = {
+      role: 'assistant',
+      text: `Draft project created for ${availableBaseModels.find((model) => model.asset_id === assetId)?.name ?? 'the selected character'}. Preview and adjust sliders now; approve the plan and assemble in Blender when you are ready.`,
+    };
+    if (initialPrompt) {
+      const userMessage: ChatEntry = { role: 'user', text: initialPrompt };
+      setChat([welcomeMessage, userMessage]);
+      try {
+        const assistantMessage = await sendProjectChatMessage(planned, initialPrompt, null);
+        setMessage('');
+        setChat([welcomeMessage, userMessage, assistantMessage]);
+      } catch (error) {
+        setChat([welcomeMessage, userMessage, {
+          role: 'assistant',
+          text: `Request failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+        }]);
+      }
+    } else {
+      setChat([welcomeMessage]);
+    }
+    setStudioSection('models');
+    setNewProjectOpen(false);
+    setProjectCreationError('');
+  }
+
+  async function createProject() {
+    if (!selectedBaseModelInfo) {
+      throw new Error('Choose an available character base model before creating the project.');
+    }
+    await createProjectForAsset(selectedBaseModelInfo.asset_id, projectName);
+  }
+
+  async function runAction(action: () => Promise<void>) {
+    setRunning(true);
+    try {
+      await action();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'unknown error';
+      if (newProjectOpen) setProjectCreationError(errorMessage);
+      setChat((items) => [...items, {
+        role: 'assistant',
+        text: `Action failed: ${errorMessage}`,
+      }]);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function returnToWelcome() {
+    if (running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty) return;
+    setProject(null);
+    setSelectedBaseModel(null);
+    setSavedProjectsOpen(false);
+    setChatOpen(false);
+    setStudioSection('models');
+  }
+
+  async function openProject(id: string) {
+    if (!id) return;
+    const loaded = await requestJson<ApiProject>(`/projects/${id}`);
+    applyProject(loaded);
+    setMorphPreviewEnabled(false);
+    setChat(loaded.messages?.map((item) => ({ role: item.role, text: item.content })) ?? []);
+    setSavedProjectsOpen(false);
+  }
+
+  async function deleteProject(id: string, name: string) {
+    if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return;
+    await requestJson<void>(`/projects/${id}`, { method: 'DELETE' });
+    setSavedProjects((projects) => projects.filter((item) => item.id !== id));
+    if (project?.id === id) openNewProject();
+    setSavedProjectsOpen(false);
+  }
+
+  async function approvePhase() {
+    if (!project || !reviewPhase) return;
+    const updated = await requestJson<ApiProject>(`/projects/${project.id}/phases/${reviewPhase.id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ expected_scene_version: project.scene_version }),
+    });
+    applyProject(updated);
+    setChat((items) => [...items, { role: 'assistant', text: `${reviewPhase.title} approved.` }]);
+  }
+
+  async function buildEditableCharacter(projectToImport = project) {
+    if (!projectToImport) throw new Error('Create a project first.');
+    const assetId = projectToImport.base_model_asset_id ?? selectedBaseModel;
+    if (!assetId) throw new Error('The selected base model is no longer available.');
+    setImportingCharacter(true);
+    try {
+      const result = await requestJson<{ project: ApiProject }>(`/projects/${projectToImport.id}/modeling-tools`, {
+        method: 'POST',
+        body: JSON.stringify({
+          tool_name: 'import_base_model',
+          operation_id: crypto.randomUUID(),
+          expected_scene_version: projectToImport.scene_version,
+          scope_component_ids: [],
+          dependency_component_ids: [],
+          arguments: {
+            asset_id: assetId,
+            preset_id: projectToImport.draft_appearance
+              ? projectToImport.draft_appearance.body_preset_id
+              : activeBodyPresetId,
+            skin_asset_id: projectToImport.draft_appearance?.skin_asset_id ?? null,
+          },
+        }),
+      });
+      applyProject(result.project);
+      setSavedProjects((projects) => [summarizeProject(result.project), ...projects.filter((item) => item.id !== result.project.id)]);
+      setChat((items) => [...items, { role: 'assistant', text: `Saved and compiled the ${availableBaseModels.find((model) => model.asset_id === assetId)?.name ?? 'character'} in Blender, including the tracked morph, preset, and eye choices.` }]);
+    } finally {
+      setImportingCharacter(false);
+    }
+  }
+
+  async function saveMorphs() {
+    if (!project || !body) throw new Error('Import the CC3 morph character before saving controls.');
+    if (morphsBaked) throw new Error('Restore the pre-bake checkpoint before saving morph controls again.');
+    const assetId = body.source_asset?.asset_id;
+    if (!assetId) throw new Error('The imported model does not identify its source asset.');
+    const result = await requestJson<{ project: ApiProject }>(`/projects/${project.id}/modeling-tools`, {
+      method: 'POST',
+      body: JSON.stringify({
+        tool_name: bodyPresetDirty ? 'apply_cc3_body_preset' : 'apply_cc3_morph_controls',
+        operation_id: crypto.randomUUID(),
+        expected_scene_version: project.scene_version,
+        scope_component_ids: [body.id],
+        dependency_component_ids: [],
+        arguments: {
+          component_id: body.id,
+          asset_id: assetId,
+          morphs,
+          ...(bodyPresetDirty ? { preset_id: activeBodyPresetId } : {}),
+        },
+      }),
+    });
+    applyProject(result.project);
+    setChat((items) => [...items, {
+      role: 'assistant',
+      text: bodyPresetDirty
+        ? 'The character preset and current morph values were saved to the Blender project.'
+        : 'Morph controls saved to the Blender project.',
+    }]);
+  }
+
+  async function updateDraftAppearance(
+    appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null },
+  ) {
+    if (appearanceSaveInProgress.current) throw new Error('Wait for the current appearance change to finish saving.');
+    appearanceSaveInProgress.current = true;
+    setAppearanceSaving(true);
+    try {
+      if (!project) throw new Error('Create a project first.');
+      if (hasCharacter) throw new Error('Compiled projects cannot change draft appearance. Start a new draft to preview different assets.');
+      const saved = await requestJson<ApiProject>(`/projects/${project.id}/draft-appearance`, {
+        method: 'PATCH',
+        body: JSON.stringify(appearance),
+      });
+      applyProject(saved, false);
+      setSavedProjects((projects) => [summarizeProject(saved), ...projects.filter((item) => item.id !== saved.id)]);
+    } finally {
+      appearanceSaveInProgress.current = false;
+      setAppearanceSaving(false);
+    }
+  }
+
+  async function selectDraftEye(assetId: string | null) {
+    const appearance = project?.draft_appearance ?? {
+      eye_asset_id: null,
+      body_preset_id: activeBodyPresetId,
+      skin_asset_id: null,
+    };
+    await updateDraftAppearance({ ...appearance, eye_asset_id: assetId });
+  }
+
+  async function selectDraftPreset(presetId: string | null) {
+    const appearance = project?.draft_appearance ?? { eye_asset_id: null, body_preset_id: null, skin_asset_id: null };
+    await updateDraftAppearance({ ...appearance, body_preset_id: presetId });
+    setMorphPreviewEnabled(true);
+  }
+
+  async function selectDraftSkin(assetId: string | null) {
+    const appearance = project?.draft_appearance ?? {
+      eye_asset_id: null,
+      body_preset_id: activeBodyPresetId,
+      skin_asset_id: null,
+    };
+    await updateDraftAppearance({ ...appearance, skin_asset_id: assetId });
+  }
+
+  async function bakeMorphs() {
+    if (!project || !body) throw new Error('Import the CC3 morph character before baking its shape.');
+    if (morphsBaked) throw new Error('The character morphs have already been baked.');
+    if (!hasNonNeutralMorphs) throw new Error('Adjust at least one morph control before baking.');
+    if (!window.confirm('Bake the current shape into the mesh? This removes the editable morph sliders. A checkpoint will be saved so you can restore them later.')) return;
+    const assetId = body.source_asset?.asset_id;
+    if (!assetId) throw new Error('The imported model does not identify its source asset.');
+    const result = await requestJson<{ project: ApiProject }>(`/projects/${project.id}/modeling-tools`, {
+      method: 'POST',
+      body: JSON.stringify({
+        tool_name: 'bake_cc3_morph_controls',
+        operation_id: crypto.randomUUID(),
+        expected_scene_version: project.scene_version,
+        scope_component_ids: [body.id],
+        dependency_component_ids: [],
+        arguments: { component_id: body.id, asset_id: assetId, morphs },
+      }),
+    });
+    applyProject(result.project);
+    setSavedProjects((projects) => [summarizeProject(result.project), ...projects.filter((item) => item.id !== result.project.id)]);
+    setChat((items) => [...items, { role: 'assistant', text: 'Baked the current morph shape into the mesh. Editable sliders were neutralized; use Restore editable morphs to return to the pre-bake checkpoint.' }]);
+  }
+
+  async function restoreEditableMorphs() {
+    if (!project || !body?.bake_checkpoint_id) throw new Error('The pre-bake checkpoint is unavailable.');
+    if (!window.confirm('Restore the scene from the checkpoint created before baking? This will discard scene changes made after that checkpoint.')) return;
+    const restored = await requestJson<ApiProject>(
+      `/projects/${project.id}/checkpoints/${body.bake_checkpoint_id}/restore`,
+      { method: 'POST' },
+    );
+    applyProject(restored);
+    setSavedProjects((projects) => [summarizeProject(restored), ...projects.filter((item) => item.id !== restored.id)]);
+    setChat((items) => [...items, { role: 'assistant', text: 'Restored the editable morph controls from the pre-bake checkpoint.' }]);
+  }
+
+  async function uploadReference(file: File) {
+    if (!project) {
+      setChat((items) => [...items, { role: 'assistant', text: 'Create a project before uploading a reference.' }]);
+      return;
+    }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch(`${API_BASE}/projects/${project.id}/references`, { method: 'POST', body: form });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null;
+        throw new Error(detail && typeof detail === 'object' && 'message' in detail ? String(detail.message) : 'Reference upload was rejected.');
+      }
+      const loaded = await requestJson<ApiProject>(`/projects/${project.id}`);
+      applyProject(loaded);
+      setChat((items) => [...items, { role: 'assistant', text: 'Reference image stored with this project.' }]);
+    } catch (error) {
+      setChat((items) => [...items, { role: 'assistant', text: `Reference upload failed: ${error instanceof Error ? error.message : 'unknown error'}` }]);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function showAssistantGuidance(guidance: AssistantGuidance) {
+    setGuidancePosition(null);
+    const targetId = guidance.target_id;
+    if (targetId.startsWith('morph:')) {
+      const controlId = targetId.slice('morph:'.length);
+      const control = controls.find(({ id }) => id === controlId);
+      setStudioSection('models');
+      setCustomizationCategory('body');
+      if (control) {
+        setSelectedBodyArea(morphAreaForControl(control));
+        setMorphMode('advanced');
+        setMorphLibraryView('all');
+        setMorphTypeFilter('all');
+        setMorphSearch(control.label);
+        setSelectedMorphId(control.id);
+        setMorphPreviewEnabled(true);
+      }
+    } else if (targetId.startsWith('skin:')) {
+      setStudioSection('models');
+      setCustomizationCategory('skin');
+    } else if (targetId.startsWith('eye:')) {
+      setStudioSection('models');
+      setCustomizationCategory('eyes');
+    } else if (targetId.startsWith('preset:') || targetId === 'preset-library') {
+      setStudioSection('models');
+      setCustomizationCategory('body');
+      setSelectedBodyArea('presets');
+      setMorphSearch('');
+      setMorphLibraryView('all');
+      setMorphTypeFilter('all');
+      setMorphMode('advanced');
+    } else if (targetId === 'skin-library') {
+      setStudioSection('models');
+      setCustomizationCategory('skin');
+    } else if (targetId === 'eye-library') {
+      setStudioSection('models');
+      setCustomizationCategory('eyes');
+    } else if (targetId === 'workflow-review') {
+      setStudioSection('scene');
+    } else if (targetId === 'morph-library') {
+      setStudioSection('models');
+      setCustomizationCategory('body');
+      setMorphSearch('');
+      setMorphLibraryView('all');
+      setMorphTypeFilter('all');
+      setMorphMode('advanced');
+      const firstBodyControl = visibleControls.find((control) => morphAreaForControl(control) === 'body')
+        ?? visibleControls[0];
+      if (firstBodyControl) {
+        setSelectedBodyArea(morphAreaForControl(firstBodyControl));
+        setSelectedMorphId(firstBodyControl.id);
+      } else {
+        setSelectedBodyArea('body');
+        setSelectedMorphId(null);
+      }
+    } else {
+      setStudioSection('models');
+      setCustomizationCategory('body');
+    }
+    setActiveGuidance(guidance);
+  }
+
+  async function applyAssistantProposal(proposal: AssistantProposal, chatIndex: number) {
+    if (!project) throw new Error('Open a project before applying an AI proposal.');
+    const morphUpdates = proposal.morph_updates ?? {};
+    for (const [controlId, value] of Object.entries(morphUpdates)) {
+      const control = controls.find(({ id }) => id === controlId);
+      if (!control || !Number.isFinite(value) || value < control.minimum || value > control.maximum) {
+        throw new Error(`The proposed ${controlId} value is not available for this character.`);
+      }
+      if (morphControlsDisabled) throw new Error('Morph editing is unavailable for this character in its current state.');
+    }
+
+    const appearanceUpdates = proposal.appearance_updates ?? {};
+    const changesAppearance = Object.keys(appearanceUpdates).length > 0;
+    if (changesAppearance) {
+      if (hasCharacter) throw new Error('Appearance choices can only be changed in an uncompiled draft.');
+      if (appearanceSaveInProgress.current) throw new Error('Wait for the current appearance change to finish saving.');
+      const nextAppearance = {
+        ...project.draft_appearance,
+        ...appearanceUpdates,
+      };
+      await updateDraftAppearance(nextAppearance);
+      if (Object.hasOwn(appearanceUpdates, 'body_preset_id')) setMorphPreviewEnabled(true);
+    }
+
+    if (Object.keys(morphUpdates).length > 0) {
+      setMorphInteractionActive(false);
+      setMorphs((current) => ({ ...current, ...morphUpdates }));
+      setRecentMorphIds((current) => [
+        ...Object.keys(morphUpdates).reverse(),
+        ...current.filter((id) => !Object.hasOwn(morphUpdates, id)),
+      ].slice(0, 12));
+      setMorphPreviewEnabled(true);
+      if (hasCharacter) {
+        setChat((items) => [...items, {
+          role: 'assistant',
+          text: 'The proposed morphs are previewed. Use “Save changes to Blender” when you want to commit them to the compiled scene.',
+        }]);
+      }
+    }
+    setChat((items) => items.map((item, index) => index === chatIndex
+      ? { ...item, proposalApplied: true }
+      : item));
+  }
+
+  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = message.trim();
+    if (!text || running) return;
+    if (!project && !selectedBaseModelInfo) {
+      if (availableBaseModels.length > 0) {
+        setProjectCreationError('');
+        setNewProjectStep('character-setup');
+        setNewProjectOpen(true);
+      }
+      return;
+    }
+    setMessage('');
+    setChat((items) => [...items, { role: 'user', text }]);
+    setRunning(true);
+    try {
+      let activeProject = project;
+      if (!activeProject) {
+        if (!apiReady) throw new Error('The local workspace API is not connected.');
+        if (!selectedBaseModelInfo) throw new Error('No character base model is available. Open New Project to review model availability.');
+        const created = await requestJson<ApiProject>('/projects', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: projectName.trim() || 'Untitled Character',
+            target_profile: 'general_purpose',
+            base_model_asset_id: selectedBaseModelInfo.asset_id,
+          }),
+        });
+        activeProject = created;
+        applyProject(created);
+        setSavedProjects((projects) => [summarizeProject(created), ...projects.filter((item) => item.id !== created.id)]);
+        const planned = await requestJson<ApiProject>(`/projects/${created.id}/plan`, { method: 'POST' });
+        activeProject = planned;
+        applyProject(planned);
+        setSavedProjects((projects) => [summarizeProject(planned), ...projects.filter((item) => item.id !== planned.id)]);
+      }
+      const assistantMessage = await sendProjectChatMessage(
+        activeProject,
+        text,
+        activeProject.id === project?.id ? body?.id ?? null : null,
+      );
+      setChat((items) => [...items, assistantMessage]);
+    } catch (error) {
+      setChat((items) => [...items, { role: 'assistant', text: `Request failed: ${error instanceof Error ? error.message : 'unknown error'}` }]);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function startComposerDrag(event: React.PointerEvent<HTMLElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (!(event.target instanceof Element)) return;
+    const target = event.target;
+    if (target.closest('textarea, input, button, select, a, label') && !target.closest('.chat-launcher')) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    composerDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+      started: false,
+      wasCollapsed: !chatOpen,
+    };
+    if (chatOpen) setComposerSize({ width: bounds.width, height: bounds.height });
+  }
+
+  function startComposerResize(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = event.currentTarget.closest('.chat-widget')?.getBoundingClientRect();
+    if (!bounds) return;
+    composerResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
+  function resizeComposerByKeyboard(event: React.KeyboardEvent<HTMLButtonElement>) {
+    const step = event.shiftKey ? 40 : 16;
+    const widthDelta = event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0;
+    const heightDelta = event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0;
+    if (!widthDelta && !heightDelta) return;
+    event.preventDefault();
+    setComposerSize((size) => {
+      const minWidth = Math.min(320, window.innerWidth - 24);
+      const minHeight = Math.min(360, window.innerHeight - 80);
+      const maxWidth = Math.max(minWidth, Math.min(760, window.innerWidth - 24));
+      const maxHeight = Math.max(minHeight, Math.min(760, window.innerHeight - 80));
+      return {
+        width: Math.min(maxWidth, Math.max(minWidth, size.width + widthDelta)),
+        height: Math.min(maxHeight, Math.max(minHeight, size.height + heightDelta)),
+      };
+    });
+  }
+
+  useEffect(() => {
+    function syncViewportFullscreen() {
+      setViewportFullscreen(document.fullscreenElement === viewportRef.current);
+    }
+    document.addEventListener('fullscreenchange', syncViewportFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncViewportFullscreen);
+  }, []);
+
+  async function toggleViewportFullscreen() {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      setViewportControlError('The 3D viewport is not available for fullscreen.');
+      return;
+    }
+    try {
+      if (document.fullscreenElement === viewport) {
+        await document.exitFullscreen();
+      } else {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        await viewport.requestFullscreen();
+      }
+      setViewportControlError('');
+    } catch (error) {
+      setViewportControlError(error instanceof Error ? `Fullscreen failed: ${error.message}` : 'Fullscreen failed.');
+    }
+  }
+
+  const chatWidget = (
+    <section
+      className={`chat-widget${chatOpen ? ' is-open' : ' is-collapsed'}${!project ? ' landing-chat-widget' : ''}${composerDragging ? ' is-dragging' : ''}${project && composerPosition ? ' is-floating' : ''}`}
+      style={project && composerPosition ? {
+        position: 'fixed',
+        left: composerPosition.left,
+        top: composerPosition.top,
+        right: 'auto',
+        bottom: 'auto',
+        ...(chatOpen ? { width: composerSize.width, height: composerSize.height } : {}),
+      } : project && chatOpen ? {
+        width: composerSize.width,
+        height: composerSize.height,
+      } : undefined}
+      aria-label="Studio chat"
+      onPointerDown={project ? startComposerDrag : undefined}
+    >
+      {chatOpen ? <>
+        <header className="chat-widget-header">
+        <div className="chat-widget-title"><Sparkles size={19} /><strong>{project ? 'AI Assistant' : 'Chat with Canvas'}</strong></div>
+        {!project && <span className={`landing-online-status${apiReady ? ' is-ready' : apiError ? ' is-offline' : ' is-connecting'}`}><span /> {apiReady ? 'Online' : apiError ? 'Offline' : 'Connecting'}</span>}
+        <div className="chat-widget-actions">
+          <button className="chat-widget-action" type="button" aria-label="Collapse chat" title="Collapse chat" onClick={() => setChatOpen(false)}><ChevronDown size={17} /></button>
+        </div>
+        </header>
+        {(chat.length > 0 || running) ? <div className="chat-feed" aria-live="polite">
+          {chat.map((item, index) => <div key={index} className={`chat-line ${item.role}`}><div className="chat-avatar" aria-hidden="true">{item.role === 'assistant' ? <Sparkles size={18} /> : <UserRound size={18} />}</div><div className="chat-content">
+            <div className="chat-role">{item.role === 'assistant' ? 'C3Studio' : 'You'}</div>
+            <p>{item.text}</p>
+            {item.interactionWarning && <p className="assistant-interaction-warning" role="status">{item.interactionWarning}</p>}
+            {item.proposal && <section className="assistant-proposal" aria-label="Proposed draft changes">
+              <strong>Suggested changes</strong>
+              {Object.entries(item.proposal.morph_updates).length > 0 && <span>{Object.entries(item.proposal.morph_updates).map(([id, value]) => {
+                const control = controls.find(({ id: controlId }) => controlId === id);
+                return `${control?.label ?? id}: ${(value * 100).toFixed(0)}%`;
+              }).join(' · ')}</span>}
+              {Object.entries(item.proposal.appearance_updates).map(([key, value]) => {
+                const asset = [...eyeAssets, ...skinAssets, ...bodyPresets].find(({ id }) => id === value);
+                const label = key === 'eye_asset_id' ? 'Eyes' : key === 'skin_asset_id' ? 'Skin' : 'Preset';
+                const assetLabel = asset && 'name' in asset ? asset.name : asset && 'label' in asset ? asset.label : value ?? 'Clear selection';
+                return <span key={key}>{label}: {assetLabel}</span>;
+              })}
+              <button
+                type="button"
+                disabled={item.proposalApplied || running || !project}
+                onClick={() => void runAction(() => applyAssistantProposal(item.proposal!, index))}
+              >{item.proposalApplied ? 'Applied to draft' : 'Apply to draft'}</button>
+            </section>}
+            {item.guidance && <button className="assistant-guidance-link" type="button" onClick={() => showAssistantGuidance(item.guidance!)}>
+              {activeGuidance?.target_id === item.guidance.target_id ? 'Guidance shown' : `Show guide: ${item.guidance.title}`}
+            </button>}
+          </div></div>)}
+          {running && <div className="thinking"><span /><span /><span /> Working…</div>}
+        </div> : <div className="chat-empty-state">
+          <span className="chat-empty-icon"><Sparkles size={22} /></span>
+          <strong>{project ? 'How can I help with this project?' : 'Hi, I’m Canvas. How can I help today?'}</strong>
+          <span>{project
+            ? 'Ask a question or describe a scoped change.'
+            : 'Describe a character. Choose a model before we create its draft.'}</span>
+          {!project && <div className="landing-chat-shortcuts" aria-label="Assistant suggestions">
+            <button type="button" onClick={openNewProject}><Plus size={14} /> Create a new project <ChevronRight size={14} /></button>
+            <button type="button" onClick={() => setMessage('What can I create with the installed character models?')}><Box size={14} /> Explore character creation <ChevronRight size={14} /></button>
+            <button type="button" onClick={() => setMessage('Help me choose a character model.')}><CircleHelp size={14} /> Help me choose a model <ChevronRight size={14} /></button>
+          </div>}
+        </div>}
+        {apiError && <p className="workspace-alert" role="alert">{apiError}. Configure Blender and restart the API.</p>}
+        <form className="composer" aria-label="Prompt composer" onSubmit={(event) => void sendMessage(event)}>
+          <Sparkles className="composer-sparkle" size={18} aria-hidden="true" />
+          <textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder={!apiReady
+              ? 'Connect to the local workspace to chat…'
+              : !project && baseModelsLoading
+                ? 'Checking character model availability…'
+                : !project && baseModelsError
+                  ? 'Describe your character; model availability needs attention…'
+                  : !project && availableBaseModels.length === 0
+                    ? 'Describe your character; no base models are available…'
+                    : !project && !selectedBaseModelInfo
+                      ? 'Describe your character; choose a base model when sending…'
+                  : !project
+                    ? 'Describe your character to start a project…'
+                    : 'Ask me anything…'}
+            rows={1}
+            disabled={!apiReady || running || (!project && baseModelsLoading)}
+          />
+          <div className="composer-bottom">
+            <div className="composer-hints">
+              <input type="file" accept="image/png,image/jpeg,image/webp" hidden id="reference-upload" aria-label="Choose reference image" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadReference(file); }} />
+              <button type="button" aria-label="Attach reference image" disabled={!project || uploading} onClick={() => document.getElementById('reference-upload')?.click()}><Paperclip size={18} /></button>
+            </div>
+            <button className="send-button" type="submit" disabled={!message.trim() || !apiReady || running || (!project && (baseModelsLoading || availableBaseModels.length === 0))} aria-label="Send message"><Send size={18} /></button>
+          </div>
+        </form>
+        {project && <button
+          className="chat-resize-handle"
+          type="button"
+          aria-label="Resize chat window"
+          title="Drag to resize · use arrow keys to adjust"
+          onPointerDown={startComposerResize}
+          onKeyDown={resizeComposerByKeyboard}
+        />}
+      </> : <button
+        className="chat-launcher"
+        type="button"
+        aria-label="Open chat"
+        title="Open chat"
+        onClick={() => {
+          if (suppressChatToggleClick.current) {
+            suppressChatToggleClick.current = false;
+            return;
+          }
+          setComposerPosition(null);
+          setChatOpen(true);
+        }}
+      ><Sparkles size={25} /></button>}
+    </section>
+  );
+
+  const assistantGuidanceTooltip = activeGuidance && guidancePosition ? createPortal(
+    <aside
+      className={`assistant-guidance-tooltip${guidancePosition.placement === 'above' ? ' is-above' : ''}`}
+      role="status"
+      aria-live="polite"
+      style={{
+        left: guidancePosition.left,
+        top: guidancePosition.top,
+        ['--guide-arrow-left' as string]: `${guidancePosition.arrowLeft}px`,
+      }}
+    >
+      <button type="button" aria-label="Dismiss guidance" onClick={() => { setActiveGuidance(null); setGuidancePosition(null); }}><X size={15} /></button>
+      <strong>{activeGuidance.title}</strong>
+      <p>{activeGuidance.message}</p>
+    </aside>,
+    document.body,
+  ) : null;
+
+  const sceneHierarchy = (
+    <div className="scene-tree">
+      <div className="scene-tree-row scene-root"><ChevronDown size={15} /><Box size={19} /><span>Scene</span></div>
+      {hasCharacter ? <>
+        <div className="scene-tree-row scene-character"><ChevronDown size={15} /><UserRound size={19} /><span>Character</span></div>
+        {(Object.keys(parts) as ModelPartKey[]).map((key) => <div className={`scene-tree-row scene-part${selectedPart === key ? ' selected' : ''}`} key={key}>
+          <button className="scene-part-select" type="button" onClick={() => setSelectedPart(key)}><Box size={18} /><span>{key === 'body' ? 'Body' : parts[key].label.replace(' and ', ' & ')}</span></button>
+          <button className="scene-part-visibility" type="button" title={parts[key].visible ? 'Hide component in preview' : 'Show component in preview'} aria-label={`${parts[key].visible ? 'Hide' : 'Show'} ${parts[key].label}`} onClick={() => setParts((current) => ({ ...current, [key]: { ...current[key], visible: !current[key].visible } }))}>{parts[key].visible ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+        </div>)}
+      </> : project
+        ? <div className="scene-empty-row"><span className="scene-empty-indent" /><span>Draft character preview · not assembled</span></div>
+        : <div className="scene-empty-row"><span className="scene-empty-indent" /><span>No model in scene</span></div>}
+    </div>
+  );
+
+  const characterProperties = <>
+    <div className="property-summary">
+      <span className="property-thumbnail">{hasCharacter ? <UserRound size={29} /> : <FolderOpen size={26} />}</span>
+      <div><strong>{selectedPart ? parts[selectedPart].label : project?.name ?? 'Workspace'}</strong><span>{hasCharacter ? activeModelName : project ? 'Character project' : 'No project selected'}</span><span>{project ? `Scene version ${project.scene_version}` : 'Create a project to get started'}</span></div>
+    </div>
+    {hasCharacter && <div className="inspector-morphs">
+      <div className="cc3-morph-heading">
+        <div><strong>Character morphs</strong><small>{morphsBaked ? 'Baked into mesh' : morphsDirty || bodyPresetDirty ? 'Preview only · unsaved' : 'Saved in Blender'}</small></div>
+        <button type="button" disabled={!hasNonNeutralMorphs || morphControlsDisabled} onClick={resetMorphs}>Reset all</button>
+      </div>
+      <small className="cc3-morph-note">Use the Body editor to search and adjust anatomically grouped controls.</small>
+      <button
+        className="inspector-morph-editor-link"
+        type="button"
+        onClick={() => { setStudioSection('models'); setCustomizationCategory('body'); if (hasCharacter) setMorphPreviewEnabled(true); }}
+      >Open Body morph editor <ChevronRight size={15} /></button>
+    </div>}
+    {!project && apiError && <p className="inspector-api-error" role="alert">{apiError}. Restart the local API and try again.</p>}
+    <div className="properties-note">{project && !hasCharacter
+      ? 'This character is a saved browser draft. Blender geometry is created only when you build the editable character.'
+      : 'Changes are saved through the Blender project. No placeholder geometry.'}</div>
+  </>;
+
+  const projectWorkflow = !project ? <div className="workflow-empty">Create a project to view its workflow.</div> : (
+    <div className="inspector-workflow">
+      <div className="workflow-status"><span className={referencePlan?.status === 'approved' ? 'workflow-status-dot approved' : 'workflow-status-dot'} />{referencePlan?.status === 'approved' ? 'Plan approved' : referencePlan?.status === 'awaiting_review' ? 'Plan awaiting approval' : 'Plan not started'}</div>
+      {project.planning_metadata?.summary && <p className="workflow-summary">{project.planning_metadata.summary}</p>}
+      {project.planning_metadata?.warnings?.map((warning) => <p className="workflow-warning" key={warning}>{warning}</p>)}
+      {project.component_plan?.length > 0 && <div className="planned-components">
+        <span className="property-field-label">Planned components</span>
+        {project.component_plan.map((item, index) => <div key={item.id ?? index}><Box size={15} /><span>{item.display_name}</span></div>)}
+      </div>}
+      {referencePlan?.status === 'awaiting_review' && <button className="inspector-primary-action" type="button" disabled={running || (!hasCharacter && (draftSaveStatus !== 'saved' || morphsDirty))} onClick={() => void runAction(approvePhase)}>Approve plan <ChevronRight size={16} /></button>}
+      {referencePlan?.status === 'approved' && !hasCharacter && <button
+        className="inspector-primary-action"
+        type="button"
+        disabled={running || !blenderAvailable || draftSaveStatus !== 'saved' || morphsDirty}
+        onClick={() => void runAction(buildEditableCharacter)}
+      >{importingCharacter ? `Compiling ${activeModelName}...` : 'Save / compile project in Blender'} {!importingCharacter && <ChevronRight size={16} />}</button>}
+      {referencePlan?.status === 'awaiting_review' && !hasCharacter && <p className="workflow-footnote">Approval is required before final save. All edits stay in the browser preview and persisted draft; Blender is not used until you explicitly compile.</p>}
+      {referencePlan?.status === 'approved' && !hasCharacter && <p className="workflow-footnote">{blenderAvailable
+        ? 'Eye, preset, and morph choices are previewed and saved as draft data. Save / compile builds them together in Blender.'
+        : `Blender is unavailable; this draft remains saved. ${blenderError}`}</p>}
+    </div>
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('c3canvas.dashboard-card-order', JSON.stringify(landingCardOrder));
+      setLandingCardStorageError('');
+    } catch {
+      setLandingCardStorageError('Dashboard layout could not be saved in this browser.');
+    }
+  }, [landingCardOrder]);
+
+  const reorderLandingCard = (source: LandingCardId, target: LandingCardId) => {
+    setLandingCardOrder((current) => {
+      const sourceIndex = current.indexOf(source);
+      const targetIndex = current.indexOf(target);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
+      const next = [...current];
+      next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, source);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = landingCardDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        setDraggingLandingCard(drag.cardId);
+      }
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-dashboard-card]');
+      const targetId = target && isLandingCardId(target.dataset.dashboardCard) ? target.dataset.dashboardCard : null;
+      if (drag.target !== targetId) {
+        drag.target = targetId;
+        setLandingDropTarget(targetId);
+      }
+    };
+
+    const finishPointerDrag = (event: PointerEvent) => {
+      const drag = landingCardDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (drag.moved) {
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-dashboard-card]');
+        const targetId = target && isLandingCardId(target.dataset.dashboardCard) ? target.dataset.dashboardCard : null;
+        if (targetId) reorderLandingCard(drag.cardId, targetId);
+      }
+      landingCardDragRef.current = null;
+      setDraggingLandingCard(null);
+      setLandingDropTarget(null);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', finishPointerDrag);
+    window.addEventListener('pointercancel', finishPointerDrag);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', finishPointerDrag);
+      window.removeEventListener('pointercancel', finishPointerDrag);
+    };
+  }, []);
+
+  const moveLandingCard = (cardId: LandingCardId, offset: -1 | 1) => {
+    const index = landingCardOrder.indexOf(cardId);
+    const target = landingCardOrder[index + offset];
+    if (target) reorderLandingCard(cardId, target);
+  };
+
+  const getLandingCardProps = (cardId: LandingCardId) => ({
+    style: { order: landingCardOrder.indexOf(cardId) },
+    'data-dashboard-card': cardId,
+    'data-dragging': draggingLandingCard === cardId ? 'true' : undefined,
+    'data-drop-target': draggingLandingCard !== cardId && landingDropTarget === cardId ? 'true' : undefined,
+  });
+
+  const renderLandingCardControls = (cardId: LandingCardId) => {
+    const index = landingCardOrder.indexOf(cardId);
+    const label = landingCardLabels[cardId];
+    return <div className="landing-card-controls" aria-label={`Rearrange ${label} card`}>
+      <span
+        className="landing-card-drag-handle"
+        title={`Drag to move ${label}`}
+        aria-hidden="true"
+        onPointerDown={(event: ReactPointerEvent<HTMLSpanElement>) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          event.preventDefault();
+          landingCardDragRef.current = {
+            cardId,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            moved: false,
+            target: null,
+          };
+        }}
+      ><GripVertical size={15} /></span>
+      <button type="button" aria-label={`Move ${label} earlier`} title="Move earlier" disabled={index === 0} onClick={() => moveLandingCard(cardId, -1)}><ArrowUp size={13} /></button>
+      <button type="button" aria-label={`Move ${label} later`} title="Move later" disabled={index === landingCardOrder.length - 1} onClick={() => moveLandingCard(cardId, 1)}><ArrowDown size={13} /></button>
+    </div>;
+  };
+
+  return (
+    <div className={`app-shell${project ? '' : ' landing-shell'}`}>
+      {project ? <>
+      <aside className="studio-sidebar">
+        <nav className="studio-nav" aria-label="Main navigation">
+          <button type="button" className={`studio-nav-item${studioSection === 'models' ? ' active' : ''}`} title="Models" aria-current={studioSection === 'models' ? 'page' : undefined} onClick={() => setStudioSection('models')}><UserRound size={19} /><span>Models</span></button>
+          <button type="button" className={`studio-nav-item${studioSection === 'scene' ? ' active' : ''}`} title="Scene" aria-current={studioSection === 'scene' ? 'page' : undefined} onClick={() => setStudioSection('scene')}><Layers3 size={19} /><span>Scene</span></button>
+          <button type="button" className="studio-nav-item" disabled title="Materials editing is not available yet"><Palette size={19} /><span>Materials</span></button>
+          <button type="button" className="studio-nav-item" disabled title="Lighting controls are not available yet"><Sun size={19} /><span>Lighting</span></button>
+          <button type="button" className="studio-nav-item" disabled title="Settings are not available yet"><Settings size={19} /><span>Settings</span></button>
+        </nav>
+      </aside>
+      <header className="topbar">
+        <div className="studio-brand studio-header-brand" aria-label="C3Canvas">
+          <div className="studio-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 88 88" role="presentation">
+              <rect x="4" y="4" width="80" height="80" rx="23" fill="#17212b" />
+              <text x="43" y="56" fill="#f4f6f7" fontFamily="Arial, Helvetica, sans-serif" fontSize="39" fontWeight="700" letterSpacing="-3" textAnchor="middle">C3</text>
+              <circle cx="67" cy="66" r="5" fill="#74e1c0" />
+            </svg>
+          </div>
+          <span className="studio-brand-divider" aria-hidden="true" />
+          <span className="studio-brand-copy">
+            <strong>C3Canvas</strong>
+            <small>Code · Create · Collaborate</small>
+          </span>
+        </div>
+        <div className="topbar-project-actions" aria-label="Project actions">
+          <button
+            className="project-icon-button"
+            type="button"
+            aria-label="Return to welcome screen"
+            title={draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty ? 'Wait for draft changes to save before leaving this project.' : 'Return to welcome screen'}
+            disabled={running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty}
+            onClick={returnToWelcome}
+          ><Home size={18} /></button>
+          <button className="project-icon-button" type="button" aria-label="New project" title="New project" disabled={!apiReady || running} onClick={openNewProject}><Plus size={19} /></button>
+          <div className="saved-project-picker">
+            <button
+              className="project-icon-button"
+              type="button"
+              aria-label="Open project"
+              title="Open project"
+              aria-expanded={savedProjectsOpen}
+              aria-controls="saved-project-list"
+              disabled={!apiReady || (otherSavedProjects.length === 0 && !savedProjectsLoading && !savedProjectsError) || running}
+              onClick={() => setSavedProjectsOpen((open) => !open)}
+            ><FolderOpen size={18} /></button>
+            {savedProjectsOpen && <div className="saved-project-list" id="saved-project-list" aria-label="Open saved project">
+              <strong>Open project</strong>
+              {savedProjectsLoading && <p role="status">Loading saved projects…</p>}
+              {savedProjectsError && <p role="alert">{savedProjectsError}</p>}
+              {otherSavedProjects.length > 0 ? otherSavedProjects.map((item) => {
+                const assetId = item.base_model_asset_id;
+                const modelName = availableBaseModels.find((model) => model.asset_id === assetId)?.name
+                  ?? (assetId === 'character_cc5_rlcc3plus_all_morphs_v1' ? 'RL CC3+ Full Morphs' : 'CC3 Character');
+                return <div className="saved-project-row" key={item.id}>
+                  <button
+                    type="button"
+                    className="saved-project-open"
+                    onClick={() => { setSavedProjectsOpen(false); void runAction(() => openProject(item.id)); }}
+                  >
+                    <FolderOpen size={15} />
+                    <span><strong>{item.name}</strong><small>{modelName} · {item.has_character ? 'Imported' : 'Setup only'}</small></span>
+                  </button>
+                  <button
+                    type="button"
+                    className="saved-project-delete"
+                    aria-label={`Delete ${item.name}`}
+                    title={`Delete ${item.name}`}
+                    disabled={running}
+                    onClick={() => void runAction(() => deleteProject(item.id, item.name))}
+                  ><Trash2 size={15} /></button>
+                </div>;
+              }) : <p>No saved projects.</p>}
+            </div>}
+          </div>
+        </div>
+        <div className="top-actions">
+          <button className="topbar-utility" type="button" disabled aria-label="Undo coming soon" title="Undo coming soon"><RotateCcw size={17} /></button>
+          <button className="topbar-utility" type="button" disabled aria-label="Redo coming soon" title="Redo coming soon"><RotateCcw className="redo-icon" size={17} /></button>
+          <span className="topbar-divider" />
+          <button
+            className="export-button"
+            type="button"
+            disabled={!project || hasCharacter || referencePlan?.status !== 'approved' || !blenderAvailable || running || draftSaveStatus !== 'saved' || morphsDirty}
+            title={hasCharacter ? 'This project has already been compiled.' : 'Compile the saved browser draft in Blender.'}
+            onClick={() => void runAction(buildEditableCharacter)}
+          ><Download size={18} />{importingCharacter ? 'Compiling…' : hasCharacter ? 'Compiled' : 'Save / Compile'}</button>
+          <button className="topbar-utility preview-action" type="button" disabled aria-label="Preview is not available yet" title="Preview is not available yet"><Play size={19} fill="currentColor" /></button>
+        </div>
+      </header>
+      <main
+        className={`workspace fixed-workspace${characterDockResizing ? ' is-resizing-character-dock' : ''}`}
+        ref={workspaceRef}
+        style={{ '--character-dock-width': `${characterDockWidth}px` } as CSSProperties}
+      >
+        <section className="viewport-area" aria-label="3D workspace">
+          <div className="canvas-wrap" ref={viewportRef}>
+            <PreviewErrorBoundary resetKey={displayPreviewUrl ?? 'no-preview'}>
+            <Canvas shadows dpr={[1, 1.25]} frameloop="demand" gl={{ antialias: true }}>
+              {cameraProjection === 'perspective'
+                ? <PerspectiveCamera key={`camera-${cameraKey}`} makeDefault position={[0.35, 1.1, 5.2]} fov={30} near={0.01} />
+                : <AdaptiveOrthographicCamera key={`camera-${cameraKey}`} />}
+              <ambientLight intensity={fillLightsEnabled ? 0.75 : 0.4} />
+              <hemisphereLight
+                color={lightingPreset === 'cool' ? '#e2deea' : '#ffe4cf'}
+                groundColor="#28252d"
+                intensity={fillLightsEnabled ? 0.95 : 0.35}
+              />
+              <directionalLight
+                position={[4, 7, 5]}
+                color={lightingPreset === 'cool' ? '#ffffff' : '#ffe1c6'}
+                intensity={fillLightsEnabled ? 1.65 : 0.65}
+                castShadow
+                shadow-mapSize={[1024, 1024]}
+              />
+              <directionalLight position={[-4, 3, -4]} intensity={fillLightsEnabled ? 0.65 : 0.2} />
+              <pointLight
+                position={[-3, 2, 4]}
+                intensity={fillLightsEnabled ? 0.8 : 0.2}
+                color={lightingPreset === 'cool' ? '#92b9f4' : '#ffc28a'}
+              />
+              {displayPreviewUrl && <CC3ModelPreview
+                previewUrl={displayPreviewUrl}
+                eyePreviewUrl={eyePreviewUrl}
+                skinPreview={skinPreview}
+                morphPreviewUrl={morphPreviewUrl}
+                morphDeltaBaseUrl={morphDeltaBaseUrl}
+                morphDeltaSha256={morphDeltaSha256}
+                morphPresetDeltaBaseUrl={morphPresetDeltaBaseUrl}
+                morphPresetDeltaSha256={morphPresetDeltaSha256}
+                visible={visibleParts}
+                morphs={clientMorphValues}
+                controls={clientMorphControls}
+                onClientMorphPreviewState={onClientMorphPreviewState}
+                onSkinPreviewError={onSkinPreviewError}
+              />}
+              <StudioBackdrop />
+              <ContactShadows position={[0, 0.02, 0]} opacity={0.24} scale={5} blur={2.3} far={3} />
+              <OrbitControls
+                key={`controls-${cameraKey}-${cameraProjection}`}
+                makeDefault
+                enableDamping
+                zoomToCursor
+                enableRotate
+                enablePan
+                enableZoom
+                mouseButtons={{
+                  LEFT: cameraMode === 'orbit' ? MOUSE.ROTATE : cameraMode === 'pan' ? MOUSE.PAN : MOUSE.DOLLY,
+                  MIDDLE: MOUSE.DOLLY,
+                  RIGHT: MOUSE.PAN,
+                }}
+                minDistance={0.12}
+                maxDistance={14}
+                target={[0, 1.35, 0]}
+              />
+            </Canvas>
+            </PreviewErrorBoundary>
+            {importingCharacter && <div className="preview-importing" role="status" aria-live="polite">
+              <span className="preview-loading-spinner" aria-hidden="true" />
+              <div><strong>Importing {activeModelName}</strong><span>Blender is preparing the model, materials, and editable morph controls.</span></div>
+            </div>}
+            {previewUrl && <PreviewLoadingIndicator title={eyePreviewUrl ? 'Loading eye preview' : morphPreviewUrl ? 'Loading character morph controls' : undefined} />}
+            {viewportControlError && <div className="viewport-control-error" role="alert">{viewportControlError}</div>}
+            {(morphPreviewMode === 'server' ? serverMorphPreviewStatus : clientMorphPreviewStatus) === 'updating' && <div className="preview-status" role="status">{morphPreviewMode === 'server' ? 'Updating character preview from slider values…' : 'Loading cached morph detail…'}</div>}
+            {(morphPreviewMode === 'server' ? serverMorphPreviewStatus : clientMorphPreviewStatus) === 'error' && <div className="preview-status is-error" role="alert">{morphPreviewMode === 'server' ? serverMorphPreviewError : clientMorphPreviewError}</div>}
+            {!previewUrl && baseModelsLoading && <div className="preview-status" role="status">Loading installed character preview…</div>}
+            {!previewUrl && baseModelsError && <div className="preview-status is-error" role="alert">{baseModelsError}</div>}
+            <div className="viewport-mode-controls" role="toolbar" aria-label="Viewport navigation mode">
+              <button type="button" className={cameraMode === 'orbit' ? 'active' : ''} aria-label="Orbit" title="Orbit" aria-pressed={cameraMode === 'orbit'} onClick={() => setCameraMode('orbit')}><Crosshair size={19} /><span>Orbit</span></button>
+              <span className="viewport-mode-divider" aria-hidden="true" />
+              <button type="button" className={cameraMode === 'pan' ? 'active' : ''} aria-label="Pan" title="Pan" aria-pressed={cameraMode === 'pan'} onClick={() => setCameraMode('pan')}><Hand size={19} /><span>Pan</span></button>
+              <span className="viewport-mode-divider" aria-hidden="true" />
+              <button type="button" className={cameraMode === 'zoom' ? 'active' : ''} aria-label="Zoom" title="Zoom" aria-pressed={cameraMode === 'zoom'} onClick={() => setCameraMode('zoom')}><ZoomIn size={19} /><span>Zoom</span></button>
+            </div>
+            <div className="viewport-bottom">
+              <div className="viewport-hint">
+                {cameraMode === 'orbit' ? 'Left-drag to orbit' : cameraMode === 'pan' ? 'Left-drag to pan' : 'Left-drag to zoom'} · Scroll to zoom · Right-drag to pan
+              </div>
+            </div>
+            <div className="viewport-bottom-toolbar" role="toolbar" aria-label="Viewport display controls">
+              <div className="viewport-bottom-group">
+                <button type="button" className="viewport-bottom-button" aria-label="Reset camera view" title="Reset camera view" onClick={() => setCameraKey((key) => key + 1)}>
+                  <Camera size={16} />
+                </button>
+                <button type="button" className="viewport-bottom-button is-unavailable" aria-label="Record viewport (unavailable)" title="Viewport recording is not available yet" disabled>
+                  <Video size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="viewport-bottom-button"
+                  aria-label={viewportFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                  title={viewportFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                  aria-pressed={viewportFullscreen}
+                  onClick={() => void toggleViewportFullscreen()}
+                >
+                  {viewportFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                </button>
+              </div>
+              <span className="viewport-bottom-divider" aria-hidden="true" />
+              <label className="viewport-projection">
+                <span className="sr-only">Camera projection</span>
+                <select
+                  aria-label="Camera projection"
+                  value={cameraProjection}
+                  onChange={(event) => {
+                    setCameraProjection(event.target.value === 'orthographic' ? 'orthographic' : 'perspective');
+                    setCameraKey((key) => key + 1);
+                  }}
+                >
+                  <option value="perspective">Perspective</option>
+                  <option value="orthographic">Orthographic</option>
+                </select>
+                <ChevronDown size={13} aria-hidden="true" />
+              </label>
+              <span className="viewport-bottom-divider" aria-hidden="true" />
+              <div className="viewport-bottom-group" role="group" aria-label="Studio lighting presets">
+                <button
+                  type="button"
+                  className={`viewport-light-button${lightingPreset === 'cool' ? ' active' : ''}`}
+                  aria-label="Cool studio lighting"
+                  title="Cool studio lighting"
+                  aria-pressed={lightingPreset === 'cool'}
+                  onClick={() => setLightingPreset('cool')}
+                ><span className="viewport-light-swatch cool" /></button>
+                <button
+                  type="button"
+                  className={`viewport-light-button${lightingPreset === 'warm' ? ' active' : ''}`}
+                  aria-label="Warm studio lighting"
+                  title="Warm studio lighting"
+                  aria-pressed={lightingPreset === 'warm'}
+                  onClick={() => setLightingPreset('warm')}
+                ><span className="viewport-light-swatch warm" /></button>
+                <button
+                  type="button"
+                  className={`viewport-bottom-button${fillLightsEnabled ? ' active' : ''}`}
+                  aria-label={fillLightsEnabled ? 'Turn fill lights off' : 'Turn fill lights on'}
+                  title={fillLightsEnabled ? 'Turn fill lights off' : 'Turn fill lights on'}
+                  aria-pressed={fillLightsEnabled}
+                  onClick={() => setFillLightsEnabled((enabled) => !enabled)}
+                ><Sun size={16} /></button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <aside className="character-dock" aria-label="Character customization">
+          <div
+            className="character-dock-resizer"
+            role="separator"
+            aria-label="Resize character editor"
+            aria-orientation="vertical"
+            aria-valuemin={520}
+            aria-valuemax={Math.max(520, Math.min(760, (workspaceRef.current?.clientWidth ?? window.innerWidth) - 404))}
+            aria-valuenow={Math.round(characterDockWidth)}
+            tabIndex={0}
+            onPointerDown={(event) => {
+              if (window.innerWidth <= 1100 || event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setCharacterDockResizing(true);
+            }}
+            onPointerMove={(event) => {
+              if (!characterDockResizing || event.buttons !== 1) return;
+              const workspaceBounds = workspaceRef.current?.getBoundingClientRect();
+              if (!workspaceBounds) return;
+              const maxWidth = Math.max(520, Math.min(760, workspaceBounds.width - 404));
+              setCharacterDockWidth(Math.min(maxWidth, Math.max(520, workspaceBounds.right - event.clientX)));
+            }}
+            onPointerUp={() => setCharacterDockResizing(false)}
+            onPointerCancel={() => setCharacterDockResizing(false)}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+              event.preventDefault();
+              const workspaceWidth = workspaceRef.current?.clientWidth ?? window.innerWidth;
+              const maxWidth = Math.max(520, Math.min(760, workspaceWidth - 404));
+              const delta = event.key === 'ArrowLeft' ? 24 : -24;
+              setCharacterDockWidth((width) => Math.min(maxWidth, Math.max(520, width + delta)));
+            }}
+          />
+          <nav className="character-dock-tabs" aria-label="Character categories">
+            <button type="button" className={`character-dock-tab${customizationCategory === 'body' ? ' active' : ''}`} aria-label="Morph" title="Morph" aria-pressed={customizationCategory === 'body'} onClick={() => { setCustomizationCategory('body'); setStudioSection('models'); if (hasCharacter) setMorphPreviewEnabled(true); }}><span>Morph</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'eyes' ? ' active' : ''}`} aria-label="Eyes" title="Eyes" aria-pressed={customizationCategory === 'eyes'} onClick={() => { setCustomizationCategory('eyes'); setStudioSection('models'); }}><span>Eyes</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'skin' ? ' active' : ''}`} aria-label="Skin" title="Skin" aria-pressed={customizationCategory === 'skin'} onClick={() => { setCustomizationCategory('skin'); setStudioSection('models'); }}><span>Skin</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'hair' ? ' active' : ''}`} aria-pressed={customizationCategory === 'hair'} onClick={() => { setCustomizationCategory('hair'); setStudioSection('models'); }}><span>Hair</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'clothing' ? ' active' : ''}`} aria-pressed={customizationCategory === 'clothing'} onClick={() => { setCustomizationCategory('clothing'); setStudioSection('models'); }}><span>Clothing</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'accessories' ? ' active' : ''}`} aria-label="Extras" title="Extras" aria-pressed={customizationCategory === 'accessories'} onClick={() => { setCustomizationCategory('accessories'); setStudioSection('models'); }}><span>Extras</span></button>
+          </nav>
+          <div className="character-dock-scroll">
+            {studioSection === 'models' && customizationCategory === 'body' ? <>
+              <section className="morph-editor-section" aria-label="Character morphs">
+                <header className="morph-editor-heading">
+                  <div><strong>Character morphs</strong><small>{visibleMorphControlCount} available controls</small></div>
+                  {controls.length > 0 && <span className={`morph-save-status${morphsDirty || draftSaveStatus === 'error' ? ' is-dirty' : ''}`}>{morphsBaked ? 'Baked' : serverMorphsNeedAssembly ? 'Live preview unavailable' : hasCharacter ? morphsDirty ? 'Unsaved' : 'Saved in Blender' : project ? morphInteractionActive ? 'Editing' : draftSaveStatus === 'saving' ? 'Saving draft…' : draftSaveStatus === 'error' ? 'Draft save failed' : morphsDirty ? 'Unsaved' : 'Draft saved' : 'Preview only'}</span>}
+                </header>
+                {morphControlsLoading && controls.length === 0 && <p className="morph-controls-status" role="status">Loading character controls…</p>}
+                {morphControlsError && <p className="morph-controls-status is-error" role="alert">{morphControlsError}</p>}
+                {project && !hasCharacter && <div className="morph-server-save">
+                  <small>{activeBodyPresetId !== savedBodyPresetId
+                    ? 'Preset selection is saved in this draft and compiled to Blender only when you save the project.'
+                    : morphInteractionActive
+                      ? 'Preview updates live; draft saves when you release the slider.'
+                      : draftSaveStatus === 'saving'
+                        ? 'Saving draft values…'
+                        : draftSaveStatus === 'error'
+                          ? draftSaveError
+                          : morphsDirty
+                            ? 'Draft changes waiting to save.'
+                            : 'Slider values are saved in this draft automatically.'}</small>
+                  {draftSaveStatus === 'error' && <button
+                    className="save-cc3-morphs morph-save-button"
+                    type="button"
+                    onClick={() => { setDraftSaveStatus('saving'); setDraftSaveRetry((attempt) => attempt + 1); }}
+                  >Retry draft save</button>}
+                  {serverMorphsNeedAssembly && <small>Live draft deformation requires the verified local CC5 proxy. Sliders stay disabled; Blender will not start until final compile.</small>}
+                </div>}
+                {hasCharacter && (morphPreviewMode === 'server' || hasCc5ClientMorphProxy) && !morphsBaked && <div className="morph-server-save">
+                  <button
+                  className="save-cc3-morphs morph-save-button"
+                  type="button"
+                  disabled={running || (!morphsDirty && !bodyPresetDirty)}
+                  onClick={() => void runAction(saveMorphs)}
+                  >Save changes to Blender</button>
+                  <small>{bodyPresetDirty
+                    ? 'The preview is temporary. Save applies the character preset and current sliders to Blender.'
+                    : hasCc5ClientMorphProxy
+                      ? 'Slider changes update a local high-detail proxy. Save applies them to Blender.'
+                      : 'Slider changes preview automatically. Save applies them to Blender.'}</small>
+                  {(hasCc5ClientMorphProxy ? clientMorphPreviewStatus : serverMorphPreviewStatus) === 'updating' && <small className="morph-preview-progress" role="status">{hasCc5ClientMorphProxy ? 'Updating local proxy…' : 'Updating preview…'}</small>}
+                  {(hasCc5ClientMorphProxy ? clientMorphPreviewStatus : serverMorphPreviewStatus) === 'error' && <small className="morph-preview-error" role="alert">{hasCc5ClientMorphProxy ? clientMorphPreviewError : serverMorphPreviewError}</small>}
+                </div>}
+                {controls.length > 0 ? <>
+                  <div className="morph-workspace">
+                    <nav className="morph-anatomy-nav" aria-label="Morph anatomy categories">
+                      <strong>Categories</strong>
+                      {morphAreas.map((area) => {
+                        const Icon = area.icon;
+                        return <button
+                          key={area.id}
+                          type="button"
+                          className={`morph-anatomy-option${selectedBodyArea === area.id ? ' active' : ''}`}
+                          aria-pressed={selectedBodyArea === area.id}
+                          onClick={() => {
+                            setSelectedBodyArea(area.id);
+                            setMorphSearch('');
+                            setMorphLibraryView('all');
+                            setMorphTypeFilter('all');
+                          }}
+                        >
+                          <Icon size={20} aria-hidden="true" />
+                          <span>{area.label}</span>
+                          <small>{area.count}</small>
+                        </button>;
+                      })}
+                    </nav>
+                    <section className="morph-library-pane" aria-label={`${morphSearch.trim() ? 'Search results' : activeBodyArea?.label ?? 'Character'} morph library`} data-ai-guide-target={activeBodyArea?.id === 'presets' ? 'preset-library' : 'morph-library'}>
+                      <header className="morph-library-heading">
+                        <div>
+                          <h2>{morphSearch.trim() ? 'Search Results' : activeBodyArea?.id === 'presets' ? 'Presets' : `${activeBodyArea?.label ?? 'Character'} Morphs`}</h2>
+                          <p>{morphSearch.trim()
+                            ? `${visibleLibraryControls.length} matching controls across all body areas.`
+                            : activeBodyArea?.id === 'presets'
+                              ? 'Character presets will be available here.'
+                              : `Adjust ${activeBodyArea?.label.toLocaleLowerCase() ?? 'character'} shape, proportions and details.`}</p>
+                        </div>
+                        <div className="morph-mode-switch" role="group" aria-label="Morph editor mode">
+                          <button type="button" className={morphMode === 'basic' ? 'active' : ''} aria-pressed={morphMode === 'basic'} onClick={() => setMorphMode('basic')}><Zap size={14} /> Basic</button>
+                          <button type="button" className={morphMode === 'advanced' ? 'active' : ''} aria-pressed={morphMode === 'advanced'} onClick={() => setMorphMode('advanced')}><SlidersHorizontal size={14} /> Advanced</button>
+                        </div>
+                      </header>
+                      <label className="morph-search">
+                        <Search size={16} aria-hidden="true" />
+                        <input type="search" aria-label="Search morphs" placeholder="Search morphs..." value={morphSearch} onChange={(event) => setMorphSearch(event.target.value)} />
+                        {morphSearch && <button type="button" aria-label="Clear morph search" onClick={() => setMorphSearch('')}><X size={14} /></button>}
+                      </label>
+                      <div className="morph-type-filters" role="group" aria-label="Filter morph type">
+                        {MORPH_TYPE_FILTERS.map(({ id, label }) => <button
+                          key={id}
+                          type="button"
+                          className={morphTypeFilter === id ? 'active' : ''}
+                          aria-pressed={morphTypeFilter === id}
+                          onClick={() => setMorphTypeFilter(id)}
+                        >{label}</button>)}
+                      </div>
+                      <div className="morph-library-filters" role="group" aria-label="Filter morph library">
+                        {([
+                          ['all', 'All', morphLibraryCounts.all],
+                          ['favorites', 'Favorites', morphLibraryCounts.favorites],
+                          ['recent', 'Recent', morphLibraryCounts.recent],
+                        ] as const).map(([view, label, count]) => <button key={view} type="button" className={morphLibraryView === view ? 'active' : ''} aria-pressed={morphLibraryView === view} onClick={() => setMorphLibraryView(view)}>{label}<small>{count}</small></button>)}
+                      </div>
+                      <div className="morph-card-grid">
+                        {activeBodyArea?.id === 'presets' && bodyPresets.map((preset) => {
+                          const selected = activeBodyPresetId === preset.id;
+                          return <article className={`morph-card${selected ? ' selected' : ''} morph-card--custom-art morph-card--labeled-art`} key={preset.id} data-ai-guide-target={`preset:${preset.id}`}>
+                            <button
+                              className="morph-card-select"
+                              type="button"
+                              aria-label={`${selected ? 'Undo' : 'Apply'} ${preset.label}`}
+                              aria-pressed={selected}
+                              disabled={!project || !isCc5FullMorphAsset || hasCharacter || running || appearanceSaving}
+                              onClick={() => void runAction(() => selectDraftPreset(selected ? null : preset.id))}
+                            >
+                              <span className="morph-card-art has-custom-art"><Sparkles size={48} strokeWidth={1.15} aria-hidden="true" /></span>
+                              <strong title={preset.label}>{preset.label}</strong>
+                              {selected && <small>{bodyPresetDirty ? 'Draft' : 'Saved'}</small>}
+                            </button>
+                          </article>;
+                        })}
+                        {displayedLibraryControls.map((control) => {
+                          const Icon = morphAreas.find(({ id }) => id === morphAreaForControl(control))?.icon ?? PersonStanding;
+                          const hasShoulderFrontCreaseArtwork = /shoulder.*front.*crease/i.test(`${control.id} ${control.label}`);
+                          const customArtworkSrc = hasShoulderFrontCreaseArtwork
+                            ? '/shoulder_front_crease_icon.png'
+                            : MORPH_CARD_ARTWORK[control.id];
+                          const hasCustomArtwork = Boolean(customArtworkSrc);
+                          const value = morphs[control.id] ?? 0;
+                          const favorite = favoriteMorphIds.includes(control.id);
+                          const label = morphDisplayLabel(control.label);
+                          return <article className={`morph-card${selectedMorph?.id === control.id ? ' selected' : ''}${hasCustomArtwork ? ' morph-card--custom-art morph-card--labeled-art' : ''}`} key={control.id}>
+                            <button
+                              className="morph-card-select"
+                              type="button"
+                              aria-label={`Select ${label}`}
+                              aria-pressed={selectedMorph?.id === control.id}
+                              onClick={() => setSelectedMorphId(control.id)}
+                            >
+                              <span className={`morph-card-art morph-area-${morphAreaForControl(control)}${hasCustomArtwork ? ' has-custom-art' : ''}`}>{customArtworkSrc
+                                ? <img src={customArtworkSrc} alt="" aria-hidden="true" />
+                                : <Icon size={48} strokeWidth={1.15} aria-hidden="true" />}</span>
+                              <strong title={label}>{label}</strong>
+                              {value !== 0 && <small>{value > 0 ? '+' : ''}{(value * 100).toFixed(0)}%</small>}
+                            </button>
+                            <button
+                              className={`morph-card-favorite${favorite ? ' active' : ''}`}
+                              type="button"
+                              aria-label={`${favorite ? 'Remove' : 'Add'} ${label} ${favorite ? 'from' : 'to'} favorites`}
+                              aria-pressed={favorite}
+                              onClick={() => toggleMorphFavorite(control.id)}
+                            ><Star size={15} fill={favorite ? 'currentColor' : 'none'} /></button>
+                          </article>;
+                        })}
+                        {activeBodyArea?.id === 'presets' && bodyPresets.length === 0
+                          ? <p className="morph-library-empty">{isCc5FullMorphAsset
+                            ? 'CC5/CC3+ presets are not installed or their local proxy needs to be rebuilt.'
+                            : 'Select a CC5/CC3+ character to use these presets.'}</p>
+                          : activeBodyArea?.id !== 'presets' && visibleLibraryControls.length === 0
+                            && <p className="morph-library-empty">{morphLibraryView === 'favorites' ? 'No favorite morphs in this category yet. Star a control to save it here.' : morphLibraryView === 'recent' ? 'Morphs you adjust will appear here.' : 'No matching morph controls.'}</p>}
+                        {morphMode === 'basic' && visibleLibraryControls.length > displayedLibraryControls.length && <button className="morph-show-advanced" type="button" onClick={() => setMorphMode('advanced')}>Show all {visibleLibraryControls.length} controls <ChevronRight size={15} /></button>}
+                      </div>
+                    </section>
+                    <aside className="morph-detail-pane" aria-label="Selected morph details">
+                      {activeBodyArea?.id === 'presets' ? <>
+                        <header className="morph-detail-heading">
+                          <div><Sparkles size={24} aria-hidden="true" /><strong>{activeBodyPresetId
+                            ? bodyPresets.find(({ id }) => id === activeBodyPresetId)?.label ?? 'Character Preset'
+                            : 'Character Presets'}</strong></div>
+                        </header>
+                        <p className="morph-library-empty">Choose a body or head shape. The browser preview and draft selection save immediately; final compile applies it in Blender.</p>
+                        {bodyPresetDirty && <button
+                          className="morph-reset-category"
+                          type="button"
+                          disabled={running || appearanceSaving}
+                          onClick={() => void runAction(() => selectDraftPreset(null))}
+                        ><RotateCcw size={15} /> Undo preset</button>}
+                      </> : selectedMorph ? <>
+                        <header className="morph-detail-heading">
+                          <div>
+                            {(() => {
+                              const Icon = morphAreas.find(({ id }) => id === morphAreaForControl(selectedMorph))?.icon ?? PersonStanding;
+                              return <Icon size={24} aria-hidden="true" />;
+                            })()}
+                            <strong>{morphDisplayLabel(selectedMorph.label)}</strong>
+                          </div>
+                          <button type="button" className="morph-reset-button" disabled={morphControlsDisabled || (morphs[selectedMorph.id] ?? 0) === 0} onClick={resetSelectedMorph}><RotateCcw size={13} /> Reset</button>
+                        </header>
+                        <div className={`morph-detail-illustration morph-area-${morphAreaForControl(selectedMorph)}`} aria-hidden="true">
+                          {(() => {
+                            const Icon = morphAreas.find(({ id }) => id === morphAreaForControl(selectedMorph))?.icon ?? PersonStanding;
+                            return <Icon size={118} strokeWidth={0.8} />;
+                          })()}
+                        </div>
+                        <label className="morph-detail-slider-label" htmlFor={morphInputId(selectedMorph.id, 'selected-morph')}>Morph amount</label>
+                        <div className="morph-detail-slider" data-ai-guide-target={`morph:${selectedMorph.id}`}>
+                          <input
+                            id={morphInputId(selectedMorph.id, 'selected-morph')}
+                            aria-label={`${morphDisplayLabel(selectedMorph.label)} amount`}
+                            type="range"
+                            min={selectedMorph.minimum}
+                            max={selectedMorph.maximum}
+                            step="0.01"
+                            value={morphs[selectedMorph.id] ?? 0}
+                            disabled={morphControlsDisabled}
+                            onPointerDown={() => setMorphInteractionActive(true)}
+                            onPointerUp={() => setMorphInteractionActive(false)}
+                            onPointerCancel={() => setMorphInteractionActive(false)}
+                            onKeyDown={() => setMorphInteractionActive(true)}
+                            onKeyUp={() => setMorphInteractionActive(false)}
+                            onBlur={() => setMorphInteractionActive(false)}
+                            onChange={(event) => updateMorph(selectedMorph.id, Number(event.target.value))}
+                          />
+                          <output htmlFor={morphInputId(selectedMorph.id, 'selected-morph')}>{((morphs[selectedMorph.id] ?? 0) * 100).toFixed(0)}%</output>
+                        </div>
+                        <small className="morph-detail-range">Range: {selectedMorph.minimum.toFixed(2)} to {selectedMorph.maximum.toFixed(2)}</small>
+                        <section className="morph-related" aria-label="Related morphs">
+                          <header><strong>Related Morphs</strong><small>{morphAreas.find(({ id }) => id === morphAreaForControl(selectedMorph))?.label ?? 'Other'}</small></header>
+                          {relatedMorphs.length > 0 ? relatedMorphs.map((control) => (
+                            <div className="morph-related-control" key={control.id}>
+                              <button type="button" onClick={() => setSelectedMorphId(control.id)} title={`Select ${morphDisplayLabel(control.label)}`}>
+                                <span>{morphDisplayLabel(control.label)}</span>
+                                <small>{((morphs[control.id] ?? 0) * 100).toFixed(0)}%</small>
+                              </button>
+                              <input
+                                aria-label={`${morphDisplayLabel(control.label)} amount`}
+                                type="range"
+                                min={control.minimum}
+                                max={control.maximum}
+                                step="0.01"
+                                value={morphs[control.id] ?? 0}
+                                disabled={morphControlsDisabled}
+                                onPointerDown={() => setMorphInteractionActive(true)}
+                                onPointerUp={() => setMorphInteractionActive(false)}
+                                onPointerCancel={() => setMorphInteractionActive(false)}
+                                onKeyDown={() => setMorphInteractionActive(true)}
+                                onKeyUp={() => setMorphInteractionActive(false)}
+                                onBlur={() => setMorphInteractionActive(false)}
+                                onChange={(event) => updateMorph(control.id, Number(event.target.value))}
+                              />
+                            </div>
+                          )) : <p className="morph-related-empty">No related controls in this category.</p>}
+                        </section>
+                      </> : <p className="morph-library-empty">Choose a morph to see its controls.</p>}
+                      <button className="morph-reset-category" type="button" disabled={!activeCategoryHasChanges || morphControlsDisabled} onClick={resetMorphArea}><RotateCcw size={15} /> Reset {activeBodyArea?.label ?? 'Category'}</button>
+                      <p className="morph-editor-note">{morphsBaked
+                        ? 'This shape is baked into the mesh. Restore the pre-bake checkpoint to edit sliders again.'
+                        : morphPreviewMode === 'server'
+                          ? hasCharacter
+                            ? 'Slider adjustments preview automatically. Save changes to keep them in the project.'
+                            : 'Live draft deformation requires the verified local CC5 proxy. Draft values can still be saved; Blender starts only when you save / compile the project.'
+                          : hasCharacter
+                            ? 'Preview changes locally, then save or bake them to Blender.'
+                            : 'Preview only · create a project to save or bake changes.'}</p>
+                      {morphsBaked
+                        ? <button className="save-cc3-morphs morph-save-button" type="button" disabled={running || !body?.bake_checkpoint_id} onClick={() => void runAction(restoreEditableMorphs)}>Restore editable morphs</button>
+                        : hasCharacter && <div className={`morph-action-buttons${morphPreviewMode === 'server' ? ' server-morph-action-buttons' : ''}`}>
+                          {morphPreviewMode !== 'server' && <button className="save-cc3-morphs morph-save-button" type="button" disabled={running || (!morphsDirty && !bodyPresetDirty)} onClick={() => void runAction(saveMorphs)}>Save changes to Blender</button>}
+                          <button className="morph-bake-button" type="button" disabled={running || !hasNonNeutralMorphs} onClick={() => void runAction(bakeMorphs)}>Bake shape into mesh</button>
+                        </div>}
+                    </aside>
+                  </div>
+                </> : <p className="character-dock-unavailable">{baseModelsLoading ? 'Loading installed character controls…' : baseModelsError || 'No supported character model is available.'}</p>}
+              </section>
+            </> : <>
+              {studioSection === 'models' ? <section className="character-dock-section category-empty-state" aria-label={`${customizationCategory} assets`}>
+                <header className="character-dock-heading"><div><strong>{customizationCategory[0].toUpperCase() + customizationCategory.slice(1)}</strong></div></header>
+                  {customizationCategory === 'eyes' ? <>
+                    <div className="compatible-assets-heading" data-ai-guide-target="eye-library"><strong>Eye assets</strong><small>{eyeAssets.length} installed</small></div>
+                    {eyeAssetsLoading && <p>Loading eye assets…</p>}
+                    {eyeAssetsError && <p role="alert">{eyeAssetsError}</p>}
+                    {!project && <p className="compatible-assets-note">Create or select a draft project to save eye choices. Selecting an eye loads only its preview geometry in the browser.</p>}
+                    {project && !hasCharacter && <p className="compatible-assets-note">Eye selection is a browser-only live preview saved to this draft. Blender loads the chosen eye only when you save / compile.</p>}
+                    {project && hasCharacter && <p className="compatible-assets-note">This project is compiled. Create a new draft to preview different eye assets.</p>}
+                    {selectedDraftEye && !hasCharacter && <button
+                      className="morph-reset-category"
+                      type="button"
+                      disabled={running || appearanceSaving}
+                      onClick={() => void runAction(() => selectDraftEye(null))}
+                    ><RotateCcw size={15} /> Clear eye preview</button>}
+                    {!eyeAssetsLoading && !eyeAssetsError && eyeAssets.length === 0 && <p>No integrity-verified eye assets are installed.</p>}
+                    {!eyeAssetsLoading && <div className="compatible-assets-grid">
+                      {eyeAssets.map((asset) => (
+                        <article className="compatible-asset-card" key={asset.id} data-ai-guide-target={`eye:${asset.id}`}>
+                          <strong>{asset.name}</strong>
+                          <small>{asset.variant.replaceAll('_', ' ')}</small>
+                          <span>{selectedDraftEye?.id === asset.id ? 'Live draft preview' : 'Preview asset'}</span>
+                          <button
+                            type="button"
+                            disabled={!project || hasCharacter || running || appearanceSaving || selectedDraftEye?.id === asset.id}
+                            onClick={() => void runAction(() => selectDraftEye(asset.id))}
+                            title={!project ? 'Create or select a draft project first.' : hasCharacter ? 'Create a new draft to preview another eye.' : 'Preview this eye in the browser and save the choice to the draft'}
+                          >
+                            {appearanceSaving ? 'Saving draft…' : selectedDraftEye?.id === asset.id ? 'Preview selected' : 'Preview eye'}
+                          </button>
+                        </article>
+                      ))}
+                    </div>}
+                  </> : customizationCategory === 'skin' ? <>
+                    <div className="compatible-assets-heading" data-ai-guide-target="skin-library"><strong>Skin assets</strong><small>{skinAssets.length} installed</small></div>
+                    {skinAssetsLoading && <p role="status">Loading skin assets…</p>}
+                    {skinAssetsError && <p role="alert">{skinAssetsError}</p>}
+                    {skinPreviewError && <p role="alert">{skinPreviewError}</p>}
+                    {!project && <p className="compatible-assets-note">Create a CC3+ draft project to preview and save a skin choice.</p>}
+                    {project && !hasCharacter && <p className="compatible-assets-note">Skin maps preview in the browser and are saved with this draft. Blender materials are applied only during Save / Compile.</p>}
+                    {project && hasCharacter && <p className="compatible-assets-note">This project is compiled. Create a new draft to preview another skin.</p>}
+                    {selectedDraftSkin && !hasCharacter && <button
+                      className="morph-reset-category"
+                      type="button"
+                      disabled={running || appearanceSaving}
+                      onClick={() => void runAction(() => selectDraftSkin(null))}
+                    ><RotateCcw size={15} /> Clear skin preview</button>}
+                    {!skinAssetsLoading && !skinAssetsError && skinAssets.length === 0 && <p>No integrity-verified skin assets are installed. Prepare the local CC3+ skin package to enable this card.</p>}
+                    {!skinAssetsLoading && <div className="compatible-assets-grid">
+                      {skinAssets.map((asset) => {
+                        const compatible = !project || asset.compatible_asset_ids.includes(project.base_model_asset_id);
+                        const selected = selectedDraftSkin?.id === asset.id;
+                        const previewUrlForAsset = `${API_BASE}/assets/skins/${encodeURIComponent(asset.id)}/preview?sha256=${encodeURIComponent(asset.preview_sha256)}`;
+                        return <article className="compatible-asset-card skin-asset-card" key={asset.id} data-ai-guide-target={`skin:${asset.id}`}>
+                          <img src={previewUrlForAsset} alt="" aria-hidden="true" loading="lazy" />
+                          <strong>{asset.name}</strong>
+                          <small>CC3+ · head, body, arms and legs</small>
+                          <span>{selected ? 'Live draft preview' : 'Diffuse and normal maps'}</span>
+                          {!compatible && <small>This skin requires the RL CC3+ character.</small>}
+                          <button
+                            type="button"
+                            disabled={!project || hasCharacter || !compatible || running || appearanceSaving || selected}
+                            onClick={() => void runAction(() => selectDraftSkin(asset.id))}
+                            title={!project ? 'Create a draft project first.' : hasCharacter ? 'Create a new draft to preview another skin.' : !compatible ? 'This skin is only compatible with the RL CC3+ character.' : 'Preview this skin in the browser and save the choice to the draft'}
+                          >
+                            {appearanceSaving ? 'Saving draft…' : selected ? 'Preview selected' : 'Preview skin'}
+                          </button>
+                        </article>;
+                      })}
+                    </div>}
+                  </> : <p>No compatible {customizationCategory} assets are installed for this character yet.</p>}
+                </section> : <>
+              <section className="character-dock-section" aria-label="Scene Hierarchy">
+                <header className="character-dock-heading"><div><Layers3 size={19} /><strong>Scene Hierarchy</strong></div></header>
+                {sceneHierarchy}
+              </section>
+              <section className="character-dock-section" aria-label="Properties">
+                <header className="character-dock-heading"><div><Info size={19} /><strong>Properties</strong></div></header>
+                {characterProperties}
+              </section>
+              <section className="character-dock-section" aria-label="Workflow" data-ai-guide-target="workflow-review">
+                <header className="character-dock-heading"><div><Zap size={19} /><strong>Workflow</strong></div></header>
+                {projectWorkflow}
+              </section>
+              </>}
+            </>}
+          </div>
+        </aside>
+      </main>
+      </> : <main className="landing-page" aria-label="C3Canvas home">
+        <aside className="landing-sidebar" aria-label="Home navigation">
+          <nav className="landing-sidebar-nav" aria-label="Home">
+            <button
+              aria-label="Home"
+              title="Home"
+              className={landingSection === 'home' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setLandingSection('home');
+                document.getElementById('landing-dashboard')?.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            ><Home size={17} /><span>Home</span></button>
+            <button
+              aria-label="Projects"
+              title="Projects"
+              className={landingSection === 'projects' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setLandingSection('projects');
+                setShowAllLandingProjects(true);
+                document.getElementById('landing-projects')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            ><FolderOpen size={17} /><span>Projects</span></button>
+            <button aria-label="Models, coming soon" title="Models are not available yet" type="button" disabled><Box size={17} /><span>Models</span></button>
+            <button aria-label="Tools, coming soon" title="Tools are not available yet" type="button" disabled><Sparkles size={17} /><span>Tools</span></button>
+            <button aria-label="Settings, coming soon" title="Settings are not available yet" type="button" disabled><Settings size={17} /><span>Settings</span></button>
+            <button aria-label="Help" title="Help" type="button" onClick={() => setMessage('How does the draft-first character workflow work?')}><CircleHelp size={17} /><span>Help</span></button>
+          </nav>
+          <div className="landing-sidebar-note">
+            <Sparkles size={16} aria-hidden="true" />
+            <span>Unlock more</span>
+            <small>Preview supported character edits before compiling.</small>
+            <button type="button" disabled title="Upgrade options are not available yet">Upgrade <ArrowRight size={13} /></button>
+          </div>
+        </aside>
+        <div className="landing-dashboard" id="landing-dashboard">
+          <header className="landing-topbar">
+            <div className="landing-topbar-status">
+              <span className={`landing-connection-state${apiReady ? ' is-ready' : apiError ? ' has-error' : ' is-connecting'}`}><span />{apiReady ? 'Ready' : apiError ? 'Offline' : 'Connecting'}</span>
+              {landingCardStorageError && <span className="landing-layout-error" role="status">{landingCardStorageError}</span>}
+            </div>
+            <div className="landing-topbar-actions">
+              <button type="button" className="landing-layout-reset" aria-label="Reset dashboard card positions" title="Reset dashboard card positions" disabled={landingCardOrder.every((id, index) => id === defaultLandingCardOrder[index])} onClick={() => setLandingCardOrder([...defaultLandingCardOrder])}><RotateCcw size={15} /></button>
+              <button type="button" aria-label="Settings, coming soon" title="Settings are not available yet" disabled><Settings size={17} /></button>
+              <span className="landing-demo-user" aria-label="Demo workspace"><span>W</span><strong>Workspace</strong><ChevronDown size={13} /></span>
+            </div>
+          </header>
+          <div className="landing-dashboard-content">
+            <section {...getLandingCardProps('hero')} className="landing-hero" id="landing-home" aria-labelledby="landing-title">
+              {renderLandingCardControls('hero')}
+              <div className="landing-hero-copy">
+                <p className="landing-eyebrow"><span aria-hidden="true" /> AI-ASSISTED CHARACTER STUDIO</p>
+                <h1 id="landing-title">Create. <span>Collaborate. Craft.</span></h1>
+                <p className="landing-description">
+                  An AI-assisted 3D creation studio for modeling, rigging, animation, materials, environments, and more — simple when you want it, advanced when you need it.
+                </p>
+                <div className="landing-hero-actions">
+                  <button className="landing-start-button" type="button" disabled={!apiReady || running} onClick={openNewProject}>
+                    <Play size={15} fill="currentColor" aria-hidden="true" /> Start a new project <ArrowRight size={15} aria-hidden="true" />
+                  </button>
+                  <button className="landing-explore-button" type="button" onClick={() => document.getElementById('landing-projects')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                    <Layers3 size={15} aria-hidden="true" /> Explore projects
+                  </button>
+                </div>
+                <p className="landing-hero-note">Your project stays a browser draft until you explicitly compile it in Blender.</p>
+              </div>
+              <div className="landing-hero-art" aria-hidden="true">
+                <span className="landing-art-glow" />
+                <img src="/c3canvas_logo.png" alt="" />
+              </div>
+            </section>
+            <aside {...getLandingCardProps('assistant')} className="landing-assistant-column" aria-label="Create with AI">
+              {renderLandingCardControls('assistant')}
+              {chatWidget}
+            </aside>
+          </div>
+          <div className="landing-home-panels">
+            <section {...getLandingCardProps('new-projects')} className="landing-projects landing-concept-card" aria-labelledby="landing-new-projects-title">
+              {renderLandingCardControls('new-projects')}
+              <header className="landing-section-heading">
+                <div><Sparkles size={17} aria-hidden="true" /><h2 id="landing-new-projects-title">New projects</h2></div>
+                <span className="landing-concept-label">Visual demo</span>
+              </header>
+              <div className="landing-concept-art" role="img" aria-label="Illustrative fantasy landscape concept, not a saved project">
+                <span className="landing-concept-moon" />
+                <span className="landing-concept-mountain landing-concept-mountain-back" />
+                <span className="landing-concept-mountain landing-concept-mountain-front" />
+                <span className="landing-concept-castle" />
+                <div className="landing-concept-caption"><small>ILLUSTRATIVE CONCEPT · NOT A SAVED PROJECT</small><strong>Fantasy Realm</strong></div>
+              </div>
+              <button className="landing-concept-action" type="button" disabled={!apiReady || running} onClick={openNewProject}>Start a real character project <ArrowRight size={14} /></button>
+            </section>
+            <section {...getLandingCardProps('recent-projects')} className="landing-projects landing-recent-card" id="landing-projects" aria-labelledby="landing-projects-title">
+              {renderLandingCardControls('recent-projects')}
+              <header className="landing-section-heading">
+                <div><Activity size={17} aria-hidden="true" /><h2 id="landing-projects-title">Recent projects</h2></div>
+                <span>{savedProjectsLoading ? 'Loading…' : `${savedProjects.length} saved`}</span>
+              </header>
+              {savedProjectsError && <p className="landing-projects-error" role="alert">{savedProjectsError}</p>}
+              {savedProjectsLoading ? <p className="landing-projects-empty" role="status">Loading your saved projects…</p>
+                : savedProjects.length > 0 ? <div className="landing-project-list">
+                  {savedProjects.slice(0, showAllLandingProjects ? savedProjects.length : 3).map((item, index) => {
+                    const modelName = availableBaseModels.find(({ asset_id }) => asset_id === item.base_model_asset_id)?.name ?? 'Character model';
+                    return <button
+                      className="landing-project-card"
+                      type="button"
+                      key={item.id}
+                      disabled={running}
+                      onClick={() => void runAction(() => openProject(item.id))}
+                    >
+                      <span className={`landing-project-icon landing-project-icon-${index}`}><UserRound size={17} aria-hidden="true" /></span>
+                      <span className="landing-project-copy"><strong>{item.name}</strong><small>{modelName} · {item.has_character ? 'Compiled scene' : 'Draft'}</small></span>
+                      <ChevronRight size={15} aria-hidden="true" />
+                    </button>;
+                  })}
+                </div> : <div className="landing-projects-empty">
+                  <FolderOpen size={20} aria-hidden="true" />
+                  <p>Your saved character projects will appear here.</p>
+                  <button type="button" disabled={!apiReady || running} onClick={openNewProject}>Create your first draft <ArrowRight size={14} /></button>
+                </div>}
+              {savedProjects.length > 3 && <button className="landing-view-all" type="button" onClick={() => setShowAllLandingProjects((showAll) => !showAll)}>{showAllLandingProjects ? 'Show less' : 'View all'} <ArrowRight size={13} /></button>}
+            </section>
+            <section {...getLandingCardProps('workflow')} className="landing-projects landing-workflow-card" aria-labelledby="landing-workflow-title">
+              {renderLandingCardControls('workflow')}
+              <span className="landing-workflow-symbol" aria-hidden="true"><span /></span>
+              <p className="landing-workflow-kicker">MADE FOR CREATORS</p>
+              <h2 id="landing-workflow-title">Draft first.<br />Compile when ready.</h2>
+              <p>Preview supported character changes in your browser. Your saved choices are compiled together only when you choose.</p>
+              <button type="button" disabled={!apiReady || running} onClick={openNewProject}>Explore the workflow <ArrowRight size={14} /></button>
+            </section>
+          </div>
+        </div>
+      </main>}
+        {project && chatWidget}
+        {project && assistantGuidanceTooltip}
+      {newProjectOpen && createPortal(<div className="new-project-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !running) setNewProjectOpen(false);
+      }}>
+        <section className={`new-project-dialog${newProjectStep === 'character-setup' ? ' character-setup-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="new-project-title" aria-describedby="new-project-description">
+          <header className={`new-project-header${newProjectStep === 'character-setup' ? ' character-setup-header' : ''}`}>
+            <div className="new-project-title-wrap">
+              {newProjectStep === 'character-setup' && <button className="new-project-back" type="button" onClick={() => setNewProjectStep('asset-types')}><ArrowLeft size={17} /> Back</button>}
+              <h1 id="new-project-title">{newProjectStep === 'asset-types' ? 'Create New Asset' : <><UserRound aria-hidden="true" /> Create New <span>Character</span></>}</h1>
+              <p id="new-project-description">{newProjectStep === 'asset-types'
+                ? 'Choose what you would like to create'
+                : message.trim()
+                  ? 'Bring your imagination to life. Choose a starting model; your prompt will be sent after the draft is created.'
+                  : 'Create a character draft from an installed base model. Some customization options are not available yet.'}</p>
+            </div>
+            <button className="new-project-close" type="button" aria-label="Close new project dialog" disabled={running} onClick={() => setNewProjectOpen(false)}><X size={18} /></button>
+          </header>
+          {newProjectStep === 'asset-types' ? <div className="project-type-grid" aria-label="Asset type">
+            <button className="project-type-card character" type="button" onClick={() => { setProjectCreationError(''); setSelectedBaseModel(null); setNewProjectStep('character-setup'); }}>
+              <span className="project-type-copy"><span className="project-type-label">CHARACTER</span><strong>Character Model</strong><small>Start with an installed rigged character model.</small></span>
+            </button>
+            <button className="project-type-card unavailable" type="button" disabled aria-label="Object Model, coming soon">
+              <span className="project-type-copy"><span className="project-type-label">OBJECTS</span><strong>Object Model</strong><small>Props, buildings and objects.</small></span>
+              <span className="coming-soon">Coming soon</span>
+            </button>
+            <button className="project-type-card unavailable" type="button" disabled aria-label="Animation, coming soon">
+              <span className="project-type-copy"><span className="project-type-label">MOTION</span><strong>Animation</strong><small>Animate your models.</small></span>
+              <span className="coming-soon">Coming soon</span>
+            </button>
+            <button className="project-type-card unavailable" type="button" disabled aria-label="Voice and Sound, coming soon">
+              <span className="project-type-copy"><span className="project-type-label">AUDIO</span><strong>Voice / Sound</strong><small>Voice and sound for models.</small></span>
+              <span className="coming-soon">Coming soon</span>
+            </button>
+            <button className="project-type-card unavailable" type="button" disabled aria-label="Rigging, coming soon">
+              <span className="project-type-copy"><span className="project-type-label">CHARACTER SETUP</span><strong>Rigging</strong><small>Add a character rig.</small></span>
+              <span className="coming-soon">Coming soon</span>
+            </button>
+          </div> : <>
+            <form className="character-setup-form" onSubmit={(event) => { event.preventDefault(); setProjectCreationError(''); void runAction(createProject); }}>
+              <label className="character-name-field">
+                <span><UserRound size={13} aria-hidden="true" /> Character Name <small>{projectName.length}/120</small></span>
+                <input ref={projectNameInput} value={projectName} maxLength={120} required placeholder="Enter a name..." onChange={(event) => setProjectName(event.target.value)} />
+              </label>
+              <div className="base-model-section">
+                <div className="base-model-heading">
+                  <div><span className="new-project-kicker"><Box size={12} aria-hidden="true" /> CHARACTER TYPE</span><strong>Choose a starting model</strong></div>
+                  <span className="available-count">{baseModelsLoading ? 'Loading…' : `${availableBaseModels.length} available`}</span>
+                </div>
+                {baseModelsLoading && <p className="base-model-status" role="status">Loading available character models…</p>}
+                {baseModelsError && <p className="base-model-error" role="alert">{baseModelsError}</p>}
+                {!baseModelsLoading && !baseModelsError && availableBaseModels.length === 0 && <p className="base-model-error" role="alert">No supported character models are currently available.</p>}
+                <div className="base-model-grid" role="group" aria-label="Available character base models">
+                  {orderedBaseModels.map((model) => <button
+                    className={`base-model-option${selectedBaseModel === model.asset_id ? ' selected' : ''}${model.asset_id === ADVANCED_CHARACTER_ASSET_ID ? ' advanced' : ''}`}
+                    type="button"
+                    key={model.asset_id}
+                    aria-pressed={selectedBaseModel === model.asset_id}
+                    aria-label={`${model.asset_id === BASIC_CHARACTER_ASSET_ID
+                      ? 'Basic workflow, CC3 Female'
+                      : model.asset_id === ADVANCED_CHARACTER_ASSET_ID
+                        ? 'Advanced workflow, CC3 Plus Female'
+                        : 'CC3 Male model'}: ${model.detail}`}
+                    onClick={() => { setSelectedBaseModel(model.asset_id); setProjectCreationError(''); }}
+                  >
+                    <span className="base-model-copy">
+                      <span className="base-model-label">{model.asset_id === BASIC_CHARACTER_ASSET_ID
+                        ? 'BASIC · RECOMMENDED'
+                        : model.asset_id === ADVANCED_CHARACTER_ASSET_ID
+                          ? 'ADVANCED'
+                          : 'ADDITIONAL MODEL'}</span>
+                      <strong>{model.asset_id === BASIC_CHARACTER_ASSET_ID
+                        ? 'CC3 Female'
+                        : model.asset_id === ADVANCED_CHARACTER_ASSET_ID
+                          ? 'CC3+ Female'
+                          : 'CC3 Male'}</strong>
+                      <small>{model.asset_id === BASIC_CHARACTER_ASSET_ID
+                        ? '137 shaping controls.'
+                        : model.asset_id === ADVANCED_CHARACTER_ASSET_ID
+                          ? '2,042 controls · more resources.'
+                          : '143 shaping controls.'}</small>
+                    </span>
+                  </button>)}
+                </div>
+                {availableBaseModels.length > 0 && <p className="approval-note">Draft first. Approve the plan, then Save / Compile when ready.</p>}
+              </div>
+              <section className="character-style-placeholder" aria-label="Style customization is unavailable">
+                <div className="character-placeholder-heading"><span><Palette size={13} aria-hidden="true" /> Style</span><small>Unavailable in this version</small></div>
+                <div className="character-placeholder-tiles" aria-label="Style previews unavailable">
+                  {Array.from({ length: 6 }, (_, index) => <span className={`character-placeholder-tile tile-${index + 1}`} key={index} aria-hidden="true"><LockKeyhole size={13} /></span>)}
+                </div>
+              </section>
+              <label className="character-personality-placeholder">
+                <span><Sparkles size={13} aria-hidden="true" /> Personality <small>Optional · unavailable</small></span>
+                <textarea disabled maxLength={500} placeholder="Personality customization is not available yet." />
+              </label>
+              <div className="new-project-footer">
+                <button className="character-advanced-placeholder" type="button" disabled aria-label="Advanced options unavailable" title="Advanced options are not available yet"><Settings size={14} aria-hidden="true" /> Advanced options <small>Unavailable</small><ChevronDown size={12} aria-hidden="true" /></button>
+                <div className="new-project-actions">
+                  <button className="new-project-cancel" type="button" disabled={running} onClick={() => setNewProjectOpen(false)}>Cancel</button>
+                  <button className="new-project-submit" type="submit" disabled={running || !apiReady || baseModelsLoading || !selectedBaseModelInfo}>
+                    {running ? 'Creating project…' : 'Create Character'} {!running && <Sparkles size={14} />}
+                  </button>
+                </div>
+                {!apiReady && apiError && <p className="new-project-error" role="alert">{apiError}</p>}
+                {projectCreationError && <p className="new-project-error" role="alert">{projectCreationError}</p>}
+              </div>
+            </form>
+            <aside className="character-setup-aside" aria-label="Character workflow overview">
+              <div className="character-setup-art" aria-hidden="true">
+                <span />
+                <img src="/c3canvas_logo.png" alt="" />
+              </div>
+              <section className="character-setup-benefits" aria-labelledby="character-setup-benefits-title">
+                <h2 id="character-setup-benefits-title"><Sparkles size={15} aria-hidden="true" /> Your character will include</h2>
+                <ul>
+                  <li><span aria-hidden="true">✓</span> Browser-first draft preview</li>
+                  <li><span aria-hidden="true">✓</span> Controls for the selected model</li>
+                  <li><span aria-hidden="true">✓</span> Approval before compiling</li>
+                  <li><span aria-hidden="true">✓</span> Save / Compile only when you choose</li>
+                </ul>
+              </section>
+            </aside>
+          </>}
+        </section>
+      </div>, document.body)}
+    </div>
+  );
+}

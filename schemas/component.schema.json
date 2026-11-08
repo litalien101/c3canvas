@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/comodel/component.schema.json",
+  "title": "CoModel Component",
+  "type": "object",
+  "required": ["id", "project_id", "display_name", "semantic_type", "status", "revision"],
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "parent_id": {"type": ["string", "null"], "format": "uuid"},
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "semantic_type": {"type": "string", "enum": ["character", "body", "head", "limb", "garment", "footwear", "armor", "hair", "accessory", "material", "prop", "other"]},
+    "status": {"type": "string", "enum": ["planned", "creating", "needs_review", "approved", "modified", "archived", "failed"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "object_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "material_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "dependencies": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "attachment_targets": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "created_phase_id": {"type": ["string", "null"], "format": "uuid"},
+    "last_modified_phase_id": {"type": ["string", "null"], "format": "uuid"},
+    "geometry_hash": {"type": ["string", "null"]},
+    "validation_state": {"type": "string", "enum": ["unknown", "pass", "warning", "fail", "not_run"]}
+  },
+  "additionalProperties": false
+}

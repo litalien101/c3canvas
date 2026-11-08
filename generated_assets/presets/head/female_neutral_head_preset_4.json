@@ -1,0 +1,10 @@
+{
+  "mesh_name": "CC_Base_Body",
+  "shape_key": "CoModel_female_neutral_head_preset_4",
+  "vertex_count": 56412,
+  "polygon_count": 56184,
+  "changed_vertex_count": 41589,
+  "maximum_vertex_delta": 0.5932267308220047,
+  "blend_output": "/home/c3studio/project/generated_assets/presets/head/female_neutral_head_preset_4.blend",
+  "glb_output": "/home/c3studio/project/generated_assets/presets/head/female_neutral_head_preset_4.glb"
+}

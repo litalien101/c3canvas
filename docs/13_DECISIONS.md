@@ -1,0 +1,126 @@
+# Architecture Decision Records (ADRs)
+
+## ADR-001 — Browser UI + Blender worker rather than Blender desktop embedded in web
+**Status:** Accepted for MVP
+
+**Decision:** Build a web-first React viewport and run Blender in a controlled backend worker. Keep native `.blend` projects as the authoritative modeling artifact and use GLB snapshots for browser display.
+
+**Why:** It matches the simplified UI vision and avoids requiring users to navigate the full Blender interface. It also separates UI iteration from Blender runtime and allows background jobs.
+
+**Trade-offs:** Requires scene/preview synchronization and worker infrastructure; not every Blender feature maps perfectly to GLB.
+
+## ADR-002 — Structure and phase state are backend-enforced
+**Status:** Accepted
+
+**Decision:** Component hierarchy, phase status, approval, scene version, and checkpoints are persisted in the API/database, not inferred from chat history alone.
+
+**Why:** Chat transcripts are not reliable project state. Approval gates and object identity must survive refreshes and failures.
+
+## ADR-003 — Typed allowlisted modeling tools
+**Status:** Accepted
+
+**Decision:** Runtime AI can call only schema-validated tools. No arbitrary AI-generated Python or shell execution in the product's exposed interface.
+
+**Why:** Prevents scope violations and reduces the impact of prompt injection or malformed outputs.
+
+## ADR-004 — No simulated modeling in the active product
+**Status:** Accepted; replaces the retired mock-first approach
+
+**Decision:** The active product requires Blender for model operations and labels deterministic planning as a template. It must not create placeholder geometry or return success-shaped mock modeling results.
+
+**Why:** The viewport must show the supported CC3 character rather than an unrelated or simulated model. Explicit failure is preferable to presenting a capability the product does not provide.
+
+## ADR-005 — Character-first MVP
+**Status:** Accepted
+
+**Decision:** Start with humanoid character workflow and modular outfit components.
+
+**Why:** It maps directly to the stated user problem and provides a focused test for component relationships. Broader assets come later.
+
+## ADR-006 — Native Blender file plus GLB preview
+**Status:** Accepted
+
+**Decision:** Use `.blend` as editable source of truth when real Blender is connected, and GLB for browser preview and portable export with explicit feature limits.
+
+**Why:** The browser needs a fast common representation, while users need a native editable scene.
+
+## ADR-007 — SQLite locally; database adapter for hosted deployment
+**Status:** Accepted for MVP
+
+**Decision:** Start with SQLite migrations and a repository abstraction; move to PostgreSQL for concurrent hosted use.
+
+**Why:** Reduces local setup while protecting the service layer from database coupling.
+
+## ADR-008 — CC3 morph character is the sole supported base model
+**Status:** Superseded by ADR-009
+
+**Decision:** The pinned consolidated CC3 morph GLB and shared 137-control manifest define the active character workflow. Retire the OBJ and CC5 import paths, mock body/garment tools, and legacy ear/eyelid sculpt operations.
+
+**Why:** A single verified source asset keeps the browser preview, Blender scene, control panel, and API contract aligned. New operations must be added only with complete tests and documentation.
+
+## ADR-009 — Asset-specific CC3 model selection
+**Status:** Accepted
+
+**Decision:** Support the pinned CC3 Female asset and a second pinned CC3 Male asset behind one typed asset registry. Persist the selected asset ID on each project, retain Female as the default for existing clients/projects, and load morph controls from the selected asset's shared manifest. Only expose Male when its manifest and local GLB are installed and the GLB hash matches.
+
+**Why:** The user supplied a separate Male base and morph pack and requested it as a selectable alternative without replacing Female. Keeping each control contract asset-specific prevents morph maps from being applied to the wrong topology.
+
+**Consequences:** Male's owner-supplied GLB is local-use-only until redistribution rights are confirmed. If its local binary is absent, only Female is offered. Both assets require the same approval gate and Blender worker allowlist. The Male glTF export's material and vertex-influence fidelity limitations remain disclosed.
+
+## ADR-010 — Fixed reference-inspired workspace
+**Status:** Accepted
+
+**Decision:** Replace the dockable workspace with a fixed desktop composition: labeled left navigation, central viewport, and a fixed right inspector. Show installed character models in the inspector's Models view, followed by the existing Scene Hierarchy, Properties, and Workflow views. Keep chat floating rather than dockable.
+
+**Why:** The user chose a fixed character-editor reference and explicitly asked to remove movable/dockable panels. Placing the real installed-model picker in the inspector preserves model selection without adding a persistent shelf that is absent from the requested composition.
+
+**Consequences:** Existing browser-saved dock layouts are no longer read. Model creation, plan approval, final Blender compilation, and manifest-defined morph editing remain approval-gated. Unsupported presets, skin controls, markings, pose/camera tools, and export behavior remain unavailable rather than being represented by fake controls.
+
+## ADR-011 — CC5 browser proxy with sparse morph deltas
+**Status:** Accepted for local CC5/CC3+ installations
+
+**Context:** The CC5/CC3+ asset has 2,042 controls across six source meshes. Regenerating and loading a full Blender preview for every slider update is too slow, while storing a complete geometry snapshot per slider multiplies storage and does not compose naturally.
+
+**Decision:** Optionally generate a source-hash-bound browser GLB with the source topology and a ZIP of sparse positive/negative per-control vertex deltas. The browser lazily loads allowlisted controls and applies only changed values to the current proxy geometry, refreshing normals around affected vertices. Blender remains authoritative; only explicit save mutates the project. If the local proxy is unavailable or invalid, retain the existing debounced server preview for assembled projects; keep pre-assembly CC5/CC3+ sliders disabled instead of implicitly starting Blender.
+
+**Alternatives considered:** Full geometry snapshots for each control (large and combinatorially unfit for mixed controls), and full-scene Blender regeneration on every slider change (too slow).
+
+**Consequences:** The proxy avoids subdivision to keep a direct source-vertex mapping; its geometry therefore follows source topology rather than the higher-subdivision server preview. Sparse deltas must use the same normalized object transform and Blender-to-glTF coordinate conversion as proxy positions. The owner confirms rights to provide the CC3+ character with this application (2026-11-07); underlying third-party attribution or redistribution terms still require review before release. Integrity checks and manifest allowlisting gate proxy and delta delivery.
+
+## ADR-013 — Basic and Advanced character workflows
+**Status:** Accepted
+
+**Decision:** Offer CC3 Female as the default **Basic** workflow and CC3+ Female as **Advanced** in new-character setup. Keep the CC3 Male available as an additional model option when installed. Both workflows use the same project, approval, and explicit compile gates; the Advanced option explains that it provides more shaping controls and may use more system resources.
+
+**Why:** Users can choose the lighter, simpler starting model or the higher-detail model without needing to understand internal asset names.
+
+**Consequences:** The selected pinned asset ID remains the persisted project contract. CC3+ is exposed only when its local source and preview artifacts pass existing integrity checks. The owner confirmed rights to provide it with the application on 2026-11-07; third-party attribution and redistribution terms still need release review.
+
+## ADR-014 — Validated assistant proposals and registered UI guidance
+**Status:** Accepted
+
+**Context:** Users want to ask the assistant to adjust character controls and to explain how to use specific parts of the editor. Direct UI scripting or model-driven tool execution would bypass draft validation and existing approval/compile boundaries.
+
+**Decision:** Non-plan chat responses use a typed interaction contract: user-facing text, optional manifest-validated morph/appearance proposals, and optional guidance to an API-supplied registered target. The API validates the model output; the browser renders a proposal and waits for explicit user application through existing draft APIs. Guidance opens the matching editor area and uses escaped text in a dismissible target-anchored tooltip. Chat cannot call Blender or approval/compile routes.
+
+**Alternatives considered:** Let the model directly manipulate arbitrary browser controls or run modeling operations from chat (unbounded and unsafe); keep chat text-only (does not provide requested contextual assistance).
+
+**Consequences:** Plain-text replies remain available but have no actions. Invalid structured output is reported explicitly and not persisted as a successful turn. The action/guidance payloads are currently response-only; persisted chat history stores text. The assistant must disclose missing capabilities such as the absence of an installed age morph or aging-skin effect.
+
+## ADR-012 — Persist browser drafts before final Blender compile
+**Status:** Accepted
+
+**Context:** Importing large source assets while users are still choosing eyes, presets, or proportions makes editing slow and can freeze the worker. Whole-geometry snapshots per slider are also wasteful and cannot be composed efficiently.
+
+**Decision:** All editing is browser preview plus persisted project draft data. Create and persist a lightweight project and plan without Blender. Autosave a complete, manifest-validated morph map and eye/preset selections; do not store geometry snapshots or advance `scene_version` for draft edits. Eye preview loads only its integrity-pinned eye-only GLB. Plan approval changes phase state only. The user must explicitly choose **Save / Compile** or export after approval. The API sends the pinned source, saved morph map, preset, and selected eye together so the worker creates the first Blender scene only at this final compile boundary. Standalone eye attachment is forbidden.
+
+**Alternatives considered:** Import on project creation or eye selection (slow and caused worker resource spikes); per-slider geometry snapshots (large and non-composable); implicitly compile when approving (confuses review with a costly runtime operation).
+
+**Consequences:** Drafts, planning, approval, and draft persistence work when Blender is unavailable. CC3, eye, and preset previews run in the browser; CC5/CC3+ uses the verified local proxy when installed. If the optional CC5/CC3+ proxy is unavailable, the UI discloses that draft deformation cannot be previewed and keeps those sliders disabled rather than starting Blender. Blender is required only for explicit compile/export and explicit post-compile scene operations.
+
+## ADR template
+- Title / status / date
+- Context
+- Decision
+- Alternatives considered
+- Consequences

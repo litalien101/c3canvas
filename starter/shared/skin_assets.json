@@ -1,0 +1,76 @@
+{
+  "assets": [
+    {
+      "id": "skin_cc3plus_female_1",
+      "name": "CC3+ Female Full Body Skin",
+      "category": "skin",
+      "compatible_asset_ids": [
+        "character_cc5_rlcc3plus_all_morphs_v1"
+      ],
+      "material_library_path": "starter/worker/blender/assets/skin_cc3plus_female_1/skin_materials.blend",
+      "card_preview": {
+        "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Skin_Card_Preview.webp",
+        "preview_sha256": "e389557e234035b91a5d44b56a77bd95f3bf506608b8d877ffc145680ad49fbd"
+      },
+      "materials": {
+        "Std_Skin_Head": {
+          "diffuse": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Head_Diffuse.png",
+            "sha256": "0a4aee235abf9905589dd21255b27b9b0f2571b0262a5e16722440ebe02e6e78",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Head_Diffuse_Preview.webp",
+            "preview_sha256": "4ee6dddd3ff09ad7b62ba3b9b293efa5ca240b25a5b5dba640af9e70d655550b"
+          },
+          "normal": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Head_Normal.png",
+            "sha256": "d3746b9fd9f22bca1333c0a93d6a1f24911249e690c7a09f72aae5469ca5590c",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Head_Normal_Preview.png",
+            "preview_sha256": "33ae7e4cc9b9ff0d33bd9a72ff3b50f1b72a65f55dbfa41154b71fba915de0e9"
+          }
+        },
+        "Std_Skin_Body": {
+          "diffuse": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Body_Diffuse.png",
+            "sha256": "981a45a9dc7089b309a954bf15db8da920c4354f1fc61166b376d1ad697f7c27",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Body_Diffuse_Preview.webp",
+            "preview_sha256": "da5b7fd0927bb1a272ffafa6264dd22cf003e98fd3e4d71022eab02173a3545c"
+          },
+          "normal": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Body_Normal.png",
+            "sha256": "27a82bdb87ac92bb49a073b6725e3473ec5cf2c6d77f34626cd8004a9538e628",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Body_Normal_Preview.png",
+            "preview_sha256": "4094fca41fcb6bc4223e5b02547235b9f9020976e2c8bc373c83000d752e33a0"
+          }
+        },
+        "Std_Skin_Arm": {
+          "diffuse": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Arm_Diffuse.png",
+            "sha256": "daa7ac317b6a16d791ede90e04e81c0e8a4032e24be1b3b581fe5ae445b52a1f",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Arm_Diffuse_Preview.webp",
+            "preview_sha256": "a2f85ac23fb55b2847d4fe610fd56dcbdd6e32b2f6b46b8bee2d20f6a3215a06"
+          },
+          "normal": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Arm_Normal.png",
+            "sha256": "814b566c24c26cf55db403c2e8ae565a21b8b8bc79173ad6e63f6dcaf376c5d0",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Arm_Normal_Preview.png",
+            "preview_sha256": "edb65044b4beb15891b614f22386e849ef20071fbc1d3e25c6a5dfd346e49627"
+          }
+        },
+        "Std_Skin_Leg": {
+          "diffuse": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Leg_Diffuse.png",
+            "sha256": "7fbf93b384fb02609d793c219c37276f6bc1551b10fa6721526916493e9c29e5",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Leg_Diffuse_Preview.webp",
+            "preview_sha256": "1e318dcb3bdff65db69e28c4b0f55fd1c77c2d1606fc9245609c50f5295c6330"
+          },
+          "normal": {
+            "path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Leg_Normal.png",
+            "sha256": "4affd7fcc791762fa501c6211c8cd73116d22f0b301f18c55bf0b1ed346ecc8e",
+            "preview_path": "starter/worker/blender/assets/skin_cc3plus_female_1/Std_Skin_Leg_Normal_Preview.png",
+            "preview_sha256": "f9dfde861c80b0fa9fde6d86c999022e72ee81d74fddcfc7050e65ce89a749c5"
+          }
+        }
+      },
+      "material_library_sha256": "5799f7af3d64c70d6732de18649b0be7cedef19daa22201c9759d73f741c9a4c"
+    }
+  ]
+}

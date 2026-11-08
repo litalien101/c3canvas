@@ -1,0 +1,30 @@
+{
+  "name": "comodel-studio-copilot-bridge",
+  "displayName": "CoModel Studio Copilot Bridge",
+  "description": "Connects the local CoModel Studio API to VS Code's Copilot Language Model API.",
+  "version": "0.1.0",
+  "publisher": "comodel-studio",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:comodelStudio.connectCopilot",
+    "onCommand:comodelStudio.disconnectCopilot"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "comodelStudio.connectCopilot",
+        "title": "CoModel Studio: Connect Copilot"
+      },
+      {
+        "command": "comodelStudio.disconnectCopilot",
+        "title": "CoModel Studio: Disconnect Copilot"
+      }
+    ]
+  }
+}

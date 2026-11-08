@@ -1,0 +1,1595 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "eye-game-multiUV",
+      "name": "eye_game_multiUV",
+      "category": "eyes",
+      "variant": "game_multi_uv",
+      "source_path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/eye_game_multiUV.Fbx",
+      "fbx_sha256": "16c2c80d195238681e00b068d8c92d8317813c1f43645f131053c3cf57e283b9",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/eye_game_multiUV.Fbx",
+          "sha256": "16c2c80d195238681e00b068d8c92d8317813c1f43645f131053c3cf57e283b9"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/eye_game_multiUV.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye_L/Ga_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye_L/Ga_Eye_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye_R/Ga_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/textures/eye_game_multiUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye_R/Ga_Eye_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_game_multiUV.glb",
+      "generated_sha256": "28fffce9523b92969f9b5d4c384e8086fb2a50c4b7f0114df2e20a768e6a3452"
+    },
+    {
+      "id": "eye-game-oneUV",
+      "name": "eye_game_oneUV",
+      "category": "eyes",
+      "variant": "game_one_uv",
+      "source_path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/eye_game_oneUV.Fbx",
+      "fbx_sha256": "1dfeb08c307fabee819b5188f72e9f2a1981e0581e40c39addf3480b2a63a004",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/eye_game_oneUV.Fbx",
+          "sha256": "1dfeb08c307fabee819b5188f72e9f2a1981e0581e40c39addf3480b2a63a004"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/eye_game_oneUV.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye/Ga_Eye_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/textures/eye_game_oneUV/CC_Game_Eye/CC_Game_Eye/Ga_Eye/Ga_Eye_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_game_oneUV.glb",
+      "generated_sha256": "775a45d35081872268d202b2374b52a539956cc1e7f4c9dd923ae0fea937fd80"
+    },
+    {
+      "id": "eye-normal-1",
+      "name": "eye_normal_1",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Fbx",
+      "fbx_sha256": "af4d7343976c1fec72409dbf3f71327aa95372c1ee0ce8c689c8a232e6d3df7b",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Fbx",
+          "sha256": "af4d7343976c1fec72409dbf3f71327aa95372c1ee0ce8c689c8a232e6d3df7b"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_1/eye_normal_1/textures/eye_normal_1/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_1.glb",
+      "generated_sha256": "9e96eaff9934c554a4ff51574253cd1e8e8e58f88a2616e315d5dba99d111313"
+    },
+    {
+      "id": "eye-normal-10",
+      "name": "eye_normal_10",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Fbx",
+      "fbx_sha256": "617c02c733f199f4584b1c36660dff3e439582cf18298fcefaf5f4ab2c7041fa",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Fbx",
+          "sha256": "617c02c733f199f4584b1c36660dff3e439582cf18298fcefaf5f4ab2c7041fa"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_10/eye_normal_10/textures/eye_normal_10/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_10.glb",
+      "generated_sha256": "503ee2b4a368f5ed349ec33d704ccb2fa5ec5b6e87b25897ca91b54dbaaf3f5b"
+    },
+    {
+      "id": "eye-normal-11",
+      "name": "eye_normal_11",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Fbx",
+      "fbx_sha256": "d9c5a0f25f9195a80c6c14d0b0b0d97d1aeef555a7bc0e8037a7fa9c02c95d10",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Fbx",
+          "sha256": "d9c5a0f25f9195a80c6c14d0b0b0d97d1aeef555a7bc0e8037a7fa9c02c95d10"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_11/eye_normal_11/textures/eye_normal_11/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_11.glb",
+      "generated_sha256": "bcfe0385e26691625b8383ffe008a1160ff9d33650b8b391dfb5f3b079df5e9b"
+    },
+    {
+      "id": "eye-normal-12",
+      "name": "eye_normal_12",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Fbx",
+      "fbx_sha256": "5ce12580a6473f6f9579bc57d3290e1724022e7e9effe8397912cf6995699957",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Fbx",
+          "sha256": "5ce12580a6473f6f9579bc57d3290e1724022e7e9effe8397912cf6995699957"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_12/eye_normal_12/textures/eye_normal_12/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_12.glb",
+      "generated_sha256": "f58cb2d73735b604738bb7b3853268b58b20cc53f5bac23e8920431fce7f01d4"
+    },
+    {
+      "id": "eye-normal-2",
+      "name": "eye_normal_2",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Fbx",
+      "fbx_sha256": "9915e9dfae49e839e2ff7f72edda82ad0e2f9bbd24ffa694cc40351277c9eed4",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Fbx",
+          "sha256": "9915e9dfae49e839e2ff7f72edda82ad0e2f9bbd24ffa694cc40351277c9eed4"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_2/eye_normal_2/textures/eye_normal_2/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_2.glb",
+      "generated_sha256": "1928c0342895b21339881a2b57b2d5da459275cac286047840376b1effa37b3b"
+    },
+    {
+      "id": "eye-normal-3",
+      "name": "eye_normal_3",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Fbx",
+      "fbx_sha256": "9ce51ecd678c238c7fca210995c5536d329b8af8e22e934925c0f67b43cb97db",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Fbx",
+          "sha256": "9ce51ecd678c238c7fca210995c5536d329b8af8e22e934925c0f67b43cb97db"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_3/eye_normal_3/textures/eye_normal_3/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_3.glb",
+      "generated_sha256": "3d08690dc1b8f7ea7818f9c73cd6e241bb2fd4ef259510cb6ccf59f92ca05093"
+    },
+    {
+      "id": "eye-normal-4",
+      "name": "eye_normal_4",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Fbx",
+      "fbx_sha256": "5452077140ffd3a3def337a01bb1a714f4ec168bbed0e5685e8ede8e619a10d6",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Fbx",
+          "sha256": "5452077140ffd3a3def337a01bb1a714f4ec168bbed0e5685e8ede8e619a10d6"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_Displacement.bmp",
+          "sha256": "847263f03755f92982f3589b5ac0f9088187b1000e625fdbe25c4f17a7c71d31"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_Displacement.bmp",
+          "sha256": "847263f03755f92982f3589b5ac0f9088187b1000e625fdbe25c4f17a7c71d31"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_4/eye_normal_4/textures/eye_normal_4/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_4.glb",
+      "generated_sha256": "99a904198b61663884f00338d21c5a5a965d62e99496ec7f1c48f3d45b710bc5"
+    },
+    {
+      "id": "eye-normal-5",
+      "name": "eye_normal_5",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Fbx",
+      "fbx_sha256": "2c350ee16ad5587b50fbc3ac12fbba15057cf35d3fd02032fe8c8e9ce661b97d",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Fbx",
+          "sha256": "2c350ee16ad5587b50fbc3ac12fbba15057cf35d3fd02032fe8c8e9ce661b97d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_5/eye_normal_5/textures/eye_normal_5/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_5.glb",
+      "generated_sha256": "81f2bab414c997347b23b534b231ab296e4b9390fe6d27c4c65ae46632a666cc"
+    },
+    {
+      "id": "eye-normal-6",
+      "name": "eye_normal_6",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Fbx",
+      "fbx_sha256": "f58822c80025924fac7c847ec7878bb1927a50146403a21e713c0ac4cd16348c",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Fbx",
+          "sha256": "f58822c80025924fac7c847ec7878bb1927a50146403a21e713c0ac4cd16348c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_6/eye_normal_6/textures/eye_normal_6/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_6.glb",
+      "generated_sha256": "2853968909bd7b1847e989a8cdc376fcc35f6f27a447faef660c82345e1fba5a"
+    },
+    {
+      "id": "eye-normal-7",
+      "name": "eye_normal_7",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Fbx",
+      "fbx_sha256": "865206a5e774c3b5c2bdd33988124386d5d71c65a0df07b0b256b4c65cbf4792",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Fbx",
+          "sha256": "865206a5e774c3b5c2bdd33988124386d5d71c65a0df07b0b256b4c65cbf4792"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_7/eye_normal_7/textures/eye_normal_7/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_7.glb",
+      "generated_sha256": "4ac70dd362fe80573df4c9fc77c291c0bcd764710ebd52923099ca16fbccff2d"
+    },
+    {
+      "id": "eye-normal-8",
+      "name": "eye_normal_8",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Fbx",
+      "fbx_sha256": "7d7c53d8570aa8e097299d23ba06973334cfb8fac5ddb854b8960e3bba80b6b0",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Fbx",
+          "sha256": "7d7c53d8570aa8e097299d23ba06973334cfb8fac5ddb854b8960e3bba80b6b0"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_8/eye_normal_8/textures/eye_normal_8/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_8.glb",
+      "generated_sha256": "243b31c5a46bd79a0007989b22d9598d05356abcccb8088bb1fa016a52ba65f4"
+    },
+    {
+      "id": "eye-normal-9",
+      "name": "eye_normal_9",
+      "category": "eyes",
+      "variant": "normal",
+      "source_path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Fbx",
+      "fbx_sha256": "ad00128ca227a6560c212707a7fe8dc02cdc144812f034bd5995b1ba0f018fc1",
+      "files": [
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Fbx",
+          "sha256": "ad00128ca227a6560c212707a7fe8dc02cdc144812f034bd5995b1ba0f018fc1"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Multi_Normal/Std_Eye_L_Normal_L0.bmp",
+          "sha256": "7222dbf92f4f78cdef6f86f0f0aef2ba1b114f2d045ccfe73bc549ebf55db759"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Multi_Normal/Std_Eye_R_Normal_L0.bmp",
+          "sha256": "2d8b353a224ef2bd5ac2e19fa382107385ece31ed44d703676907ce8f9e09637"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Multi_Normal/Std_Eyelash_Normal_L0.bmp",
+          "sha256": "ff925fd69fbeeb4bafca515a36131b68f4390e898540d61db3124974c64225c2"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.bmp",
+          "sha256": "d3be5f11edc6de09d270b5a187f8b47780d4e70e5ee5275f3a36b676f7badb32"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.bmp",
+          "sha256": "6e865b5fdcdd53d444c7c36ceda0aaf9361e245f05a215e2fd67bd6affd30abf"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.bmp",
+          "sha256": "3894bc3895632f39761036f665c8522360b828bc2e45529b2517ae7ad778354c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.bmp",
+          "sha256": "ba491205e6361cf36bcafe855f8d4b0691d263a6ad35a6d5f7c3b631312e104c"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ScleraN.bmp",
+          "sha256": "61e27cc5866cf4f3bc685acdbc1f76b8d83c03ed8cf3ee96b2c72361d30df17d"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.bmp",
+          "sha256": "aab89d309028110ab4106e3207730885bf52a1313d5de371a5c809040402f2dc"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.bmp",
+          "sha256": "b337d5ed1680e7f48814506d5925b8c0d60bab222a9e9abd62f5677740070539"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.bmp",
+          "sha256": "e26529644cbf9d2e274485423ae3be291630f6acade3afb4bf3c58244b847766"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.bmp",
+          "sha256": "456ca827fe3673392d4d2660fa3fb46972776046cf2b8d9fdeb3f723ff1f49a3"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.bmp",
+          "sha256": "167090f5c672204a29af215f96d1c1eb72dbeb5e73f588053ce29d8831c4adb8"
+        },
+        {
+          "path": "source_archive/eyes/eye_normal_9/eye_normal_9/textures/eye_normal_9/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.bmp",
+          "sha256": "c4ef564d0570e924582b992c20bdf385c1ee43de81bdeb2d8aae6223289aeb02"
+        }
+      ],
+      "attachment_status": "attachable",
+      "generated_path": "generated_assets/eyes/eye_normal_9.glb",
+      "generated_sha256": "3cfa5c32432094ccce666833105a144efb7deb45a6cb4566e51d50592ae15d95"
+    }
+  ]
+}

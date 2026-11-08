@@ -1,0 +1,1935 @@
+{
+  "format_version": 1,
+  "asset_id": "character_cc3_morphs_v1",
+  "source_neutral_filename": "CC3_Base Female.Fbx",
+  "export_count": 244,
+  "control_count": 137,
+  "controls": [
+    {
+      "id": "arm_length",
+      "label": "Arm Length",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Arm_Length_Positive",
+      "negative_shape_key": "CC3_Arm_Length_Negative",
+      "positive_filename": "arm_length_max.Fbx",
+      "negative_filename": "arm_length_negative.Fbx",
+      "source_control_names": [
+        "arm_length"
+      ]
+    },
+    {
+      "id": "elbow_thin",
+      "label": "Elbow Thin",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Elbow_Thin_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "elbow_thin_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "elbow_thin"
+      ]
+    },
+    {
+      "id": "finger_length",
+      "label": "Finger Length",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Finger_Length_Positive",
+      "negative_shape_key": "CC3_Finger_Length_Negative",
+      "positive_filename": "finger_length_max.Fbx",
+      "negative_filename": "finger_length_negative.Fbx",
+      "source_control_names": [
+        "finger_length"
+      ]
+    },
+    {
+      "id": "finger_width",
+      "label": "Finger Width",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Finger_Width_Positive",
+      "negative_shape_key": "CC3_Finger_Width_Negative",
+      "positive_filename": "finger_width_max.Fbx",
+      "negative_filename": "finger_width_negative.Fbx",
+      "source_control_names": [
+        "finger_width"
+      ]
+    },
+    {
+      "id": "fingernail_shape_a",
+      "label": "Fingernail Shape A",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Fingernail_Shape_A_Positive",
+      "negative_shape_key": "CC3_Fingernail_Shape_A_Negative",
+      "positive_filename": "fingernail_shape_a_max.Fbx",
+      "negative_filename": "fingernail_shape_a_negative.Fbx",
+      "source_control_names": [
+        "fingernail_shape_a"
+      ]
+    },
+    {
+      "id": "fingernail_shape_b",
+      "label": "Fingernail Shape B",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Fingernail_Shape_B_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "fingernail_shape_b_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "fingernail_shape_b"
+      ]
+    },
+    {
+      "id": "forearm_inner",
+      "label": "Forearm Inner",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Forearm_Inner_Positive",
+      "negative_shape_key": "CC3_Forearm_Inner_Negative",
+      "positive_filename": "forearm_inner_max.Fbx",
+      "negative_filename": "forearm_inner_negative.Fbx",
+      "source_control_names": [
+        "forearm_inner"
+      ]
+    },
+    {
+      "id": "forearm_length",
+      "label": "Forearm Length",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Forearm_Length_Positive",
+      "negative_shape_key": "CC3_Forearm_Length_Negative",
+      "positive_filename": "forearm_length_max.Fbx",
+      "negative_filename": "forearm_length_negative.Fbx",
+      "source_control_names": [
+        "forearm_length"
+      ]
+    },
+    {
+      "id": "forearm_size",
+      "label": "Forearm Size",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Forearm_Size_Positive",
+      "negative_shape_key": "CC3_Forearm_Size_Negative",
+      "positive_filename": "forearm_size_max.Fbx",
+      "negative_filename": "forearm_size_negative.Fbx",
+      "source_control_names": [
+        "forearm_size"
+      ]
+    },
+    {
+      "id": "hand_scale",
+      "label": "Hand Scale",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hand_Scale_Positive",
+      "negative_shape_key": "CC3_Hand_Scale_Negative",
+      "positive_filename": "hand_scale_max.Fbx",
+      "negative_filename": "hand_scale_negative.Fbx",
+      "source_control_names": [
+        "hand_scale"
+      ]
+    },
+    {
+      "id": "hand_shape",
+      "label": "Hand Shape",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hand_Shape_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "hand_shape_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "hand_shape"
+      ]
+    },
+    {
+      "id": "hand_thickness",
+      "label": "Hand Thickness",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hand_Thickness_Positive",
+      "negative_shape_key": "CC3_Hand_Thickness_Negative",
+      "positive_filename": "hand_thickness_max.Fbx",
+      "negative_filename": "hand_thickness_negative.Fbx",
+      "source_control_names": [
+        "hand_thickness"
+      ]
+    },
+    {
+      "id": "hand_tone",
+      "label": "Hand Tone",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hand_Tone_Positive",
+      "negative_shape_key": "CC3_Hand_Tone_Negative",
+      "positive_filename": "hand_tone_max.Fbx",
+      "negative_filename": "hand_tone_negative.Fbx",
+      "source_control_names": [
+        "hand_tone"
+      ]
+    },
+    {
+      "id": "palm_edge_slim",
+      "label": "Palm Edge Slim",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Palm_Edge_Slim_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "palm_edge_slim_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "palm_edge_slim"
+      ]
+    },
+    {
+      "id": "proximal_nail_fold",
+      "label": "Proximal Nail Fold",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Proximal_Nail_Fold_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "proximal_nail_fold_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "proximal_nail_fold"
+      ]
+    },
+    {
+      "id": "shoulder_front_crease",
+      "label": "Shoulder Front Crease",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shoulder_Front_Crease_Positive",
+      "negative_shape_key": "CC3_Shoulder_Front_Crease_Negative",
+      "positive_filename": "shoulder_front_crease_max.Fbx",
+      "negative_filename": "shoulder_front_crease_negative.Fbx",
+      "source_control_names": [
+        "shoulder_front_crease"
+      ]
+    },
+    {
+      "id": "shoulder_size",
+      "label": "Shoulder Size",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shoulder_Size_Positive",
+      "negative_shape_key": "CC3_Shoulder_Size_Negative",
+      "positive_filename": "shoulder_size_max.Fbx",
+      "negative_filename": "shoulder_size_negative.Fbx",
+      "source_control_names": [
+        "shoulder_size"
+      ]
+    },
+    {
+      "id": "shoulder_top_peak",
+      "label": "Shoulder Top Peak",
+      "category": "Arms & Hands",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shoulder_Top_Peak_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "shoulder_top_peak_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "shoulder_top_peak"
+      ]
+    },
+    {
+      "id": "shoulder_width",
+      "label": "Shoulder Width",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shoulder_Width_Positive",
+      "negative_shape_key": "CC3_Shoulder_Width_Negative",
+      "positive_filename": "shoulder_width_max.Fbx",
+      "negative_filename": "shoulder_width_negative.Fbx",
+      "source_control_names": [
+        "shoulder_width"
+      ]
+    },
+    {
+      "id": "upper_arm_length",
+      "label": "Upper Arm Length",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Upper_Arm_Length_Positive",
+      "negative_shape_key": "CC3_Upper_Arm_Length_Negative",
+      "positive_filename": "upper_arm_length_max.Fbx",
+      "negative_filename": "upper_arm_length_negative.Fbx",
+      "source_control_names": [
+        "upper_arm_length"
+      ]
+    },
+    {
+      "id": "upper_arm_size",
+      "label": "Upper Arm Size",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Upper_Arm_Size_Positive",
+      "negative_shape_key": "CC3_Upper_Arm_Size_Negative",
+      "positive_filename": "upper_arm_size_max.Fbx",
+      "negative_filename": "upper_arm_size_negative.Fbx",
+      "source_control_names": [
+        "upper-arm_size",
+        "upperarm_size"
+      ]
+    },
+    {
+      "id": "upperarm_inner",
+      "label": "Upperarm Inner",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Upperarm_Inner_Positive",
+      "negative_shape_key": "CC3_Upperarm_Inner_Negative",
+      "positive_filename": "upperarm_inner_max.Fbx",
+      "negative_filename": "upperarm_inner_negative.Fbx",
+      "source_control_names": [
+        "upperarm_inner"
+      ]
+    },
+    {
+      "id": "wrist_size",
+      "label": "Wrist Size",
+      "category": "Arms & Hands",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Wrist_Size_Positive",
+      "negative_shape_key": "CC3_Wrist_Size_Negative",
+      "positive_filename": "wrist_size_max.Fbx",
+      "negative_filename": "wrist_size_negative.Fbx",
+      "source_control_names": [
+        "wrist_size"
+      ]
+    },
+    {
+      "id": "ear_angle",
+      "label": "Ear Angle",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Angle_Positive",
+      "negative_shape_key": "CC3_Ear_Angle_Negative",
+      "positive_filename": "ear_angle_max.Fbx",
+      "negative_filename": "ear_angle_negative.Fbx",
+      "source_control_names": [
+        "ear_angle"
+      ]
+    },
+    {
+      "id": "ear_angle_top",
+      "label": "Ear Angle Top",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Angle_Top_Positive",
+      "negative_shape_key": "CC3_Ear_Angle_Top_Negative",
+      "positive_filename": "ear_angle_top_max.Fbx",
+      "negative_filename": "ear_angle_top_negative.Fbx",
+      "source_control_names": [
+        "ear_angle_top"
+      ]
+    },
+    {
+      "id": "ear_depth",
+      "label": "Ear Depth",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Depth_Positive",
+      "negative_shape_key": "CC3_Ear_Depth_Negative",
+      "positive_filename": "ear_depth_max.Fbx",
+      "negative_filename": "ear_depth_negative.Fbx",
+      "source_control_names": [
+        "ear_depth"
+      ]
+    },
+    {
+      "id": "ear_height",
+      "label": "Ear Height",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Height_Positive",
+      "negative_shape_key": "CC3_Ear_Height_Negative",
+      "positive_filename": "ear_height_max.Fbx",
+      "negative_filename": "ear_height_negative.Fbx",
+      "source_control_names": [
+        "ear_height"
+      ]
+    },
+    {
+      "id": "ear_length",
+      "label": "Ear Length",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Length_Positive",
+      "negative_shape_key": "CC3_Ear_Length_Negative",
+      "positive_filename": "ear_length_max.Fbx",
+      "negative_filename": "ear_length_negative.Fbx",
+      "source_control_names": [
+        "ear_length"
+      ]
+    },
+    {
+      "id": "ear_reshape",
+      "label": "Ear Reshape",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Reshape_Positive",
+      "negative_shape_key": "CC3_Ear_Reshape_Negative",
+      "positive_filename": "ear_reshape_max.Fbx",
+      "negative_filename": "ear_reshape_negative.Fbx",
+      "source_control_names": [
+        "ear_reshape"
+      ]
+    },
+    {
+      "id": "ear_size",
+      "label": "Ear Size",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ear_Size_Positive",
+      "negative_shape_key": "CC3_Ear_Size_Negative",
+      "positive_filename": "ear_size_max.Fbx",
+      "negative_filename": "ear_size_negative.Fbx",
+      "source_control_names": [
+        "ear_size"
+      ]
+    },
+    {
+      "id": "earlobe",
+      "label": "Earlobe",
+      "category": "Ears",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Earlobe_Positive",
+      "negative_shape_key": "CC3_Earlobe_Negative",
+      "positive_filename": "earlobe_max.Fbx",
+      "negative_filename": "earlobe_negative.Fbx",
+      "source_control_names": [
+        "earlobe"
+      ]
+    },
+    {
+      "id": "eye_angle",
+      "label": "Eye Angle",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Angle_Positive",
+      "negative_shape_key": "CC3_Eye_Angle_Negative",
+      "positive_filename": "eye_angle_max.Fbx",
+      "negative_filename": "eye_angle_negative.Fbx",
+      "source_control_names": [
+        "eye_angle"
+      ]
+    },
+    {
+      "id": "eye_depth",
+      "label": "Eye Depth",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Depth_Positive",
+      "negative_shape_key": "CC3_Eye_Depth_Negative",
+      "positive_filename": "eye_depth_max.Fbx",
+      "negative_filename": "eye_depth_negative.Fbx",
+      "source_control_names": [
+        "eye_depth"
+      ]
+    },
+    {
+      "id": "eye_height",
+      "label": "Eye Height",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Height_Positive",
+      "negative_shape_key": "CC3_Eye_Height_Negative",
+      "positive_filename": "eye_height_max.Fbx",
+      "negative_filename": "eye_height_negative.Fbx",
+      "source_control_names": [
+        "eye_height"
+      ]
+    },
+    {
+      "id": "eye_lower_depth",
+      "label": "Eye Lower Depth",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Lower_Depth_Positive",
+      "negative_shape_key": "CC3_Eye_Lower_Depth_Negative",
+      "positive_filename": "eye_lower_depth_max.Fbx",
+      "negative_filename": "eye_lower_depth_negative.Fbx",
+      "source_control_names": [
+        "eye_lower_depth"
+      ]
+    },
+    {
+      "id": "eye_outer_width_left",
+      "label": "Eye Outer Width Left",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Outer_Width_Left_Positive",
+      "negative_shape_key": "CC3_Eye_Outer_Width_Left_Negative",
+      "positive_filename": "eye_outer_width_left_max.Fbx",
+      "negative_filename": "eye_outer_width_left_negative.Fbx",
+      "source_control_names": [
+        "eye_outer_width_left"
+      ]
+    },
+    {
+      "id": "eye_outer_width_right",
+      "label": "Eye Outer Width Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Outer_Width_Right_Positive",
+      "negative_shape_key": "CC3_Eye_Outer_Width_Right_Negative",
+      "positive_filename": "eye_outer_width_right_max.Fbx",
+      "negative_filename": "eye_outer_width_right_negative.Fbx",
+      "source_control_names": [
+        "eye_outer_width_right"
+      ]
+    },
+    {
+      "id": "eye_size",
+      "label": "Eye Size",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Size_Positive",
+      "negative_shape_key": "CC3_Eye_Size_Negative",
+      "positive_filename": "eye_size_max.Fbx",
+      "negative_filename": "eye_size_negative.Fbx",
+      "source_control_names": [
+        "eye_size"
+      ]
+    },
+    {
+      "id": "eye_width",
+      "label": "Eye Width",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eye_Width_Positive",
+      "negative_shape_key": "CC3_Eye_Width_Negative",
+      "positive_filename": "eye_width_max.Fbx",
+      "negative_filename": "eye_width_negative.Fbx",
+      "source_control_names": [
+        "eye_width"
+      ]
+    },
+    {
+      "id": "eyeball_distance",
+      "label": "Eyeball Distance",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Distance_Positive",
+      "negative_shape_key": "CC3_Eyeball_Distance_Negative",
+      "positive_filename": "eyeball_distance_max.Fbx",
+      "negative_filename": "eyeball_distance_negative.Fbx",
+      "source_control_names": [
+        "eyeball_distance"
+      ]
+    },
+    {
+      "id": "eyeball_enlarge",
+      "label": "Eyeball Enlarge",
+      "category": "Eyes",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Enlarge_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "eyeball_enlarge_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "eyeball_enlarge"
+      ]
+    },
+    {
+      "id": "eyeball_enlarge_left",
+      "label": "Eyeball Enlarge Left",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Enlarge_Left_Positive",
+      "negative_shape_key": "CC3_Eyeball_Enlarge_Left_Negative",
+      "positive_filename": "eyeball_enlarge_left_max.Fbx",
+      "negative_filename": "eyeball_enlarge_left_negative.Fbx",
+      "source_control_names": [
+        "eyeball_enlarge_left"
+      ]
+    },
+    {
+      "id": "eyeball_enlarge_right",
+      "label": "Eyeball Enlarge Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Enlarge_Right_Positive",
+      "negative_shape_key": "CC3_Eyeball_Enlarge_Right_Negative",
+      "positive_filename": "eyeball_enlarge_right_max.Fbx",
+      "negative_filename": "eyeball_enlarge_right_negative.Fbx",
+      "source_control_names": [
+        "eyeball_enlarge_right"
+      ]
+    },
+    {
+      "id": "eyeball_forward_back",
+      "label": "Eyeball Forward Back",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Forward_Back_Positive",
+      "negative_shape_key": "CC3_Eyeball_Forward_Back_Negative",
+      "positive_filename": "eyeball_forward-back_max.Fbx",
+      "negative_filename": "eyeball_forward-back_negative.Fbx",
+      "source_control_names": [
+        "eyeball_forward-back"
+      ]
+    },
+    {
+      "id": "eyeball_forward_back_left",
+      "label": "Eyeball Forward Back Left",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Forward_Back_Left_Positive",
+      "negative_shape_key": "CC3_Eyeball_Forward_Back_Left_Negative",
+      "positive_filename": "eyeball_forward-back_left_max.Fbx",
+      "negative_filename": "eyeball_forward-back_left_negative.Fbx",
+      "source_control_names": [
+        "eyeball_forward-back_left"
+      ]
+    },
+    {
+      "id": "eyeball_forward_back_right",
+      "label": "Eyeball Forward Back Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Forward_Back_Right_Positive",
+      "negative_shape_key": "CC3_Eyeball_Forward_Back_Right_Negative",
+      "positive_filename": "eyeball_forward-back_right_max.Fbx",
+      "negative_filename": "eyeball_forward-back_right_negative.Fbx",
+      "source_control_names": [
+        "eyeball_forward-back_right"
+      ]
+    },
+    {
+      "id": "eyeball_left_right",
+      "label": "Eyeball Left Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Left_Right_Positive",
+      "negative_shape_key": "CC3_Eyeball_Left_Right_Negative",
+      "positive_filename": "eyeball_left-right_max.Fbx",
+      "negative_filename": "eyeball_left-right_negative.Fbx",
+      "source_control_names": [
+        "eyeball_left-right"
+      ]
+    },
+    {
+      "id": "eyeball_shrink",
+      "label": "Eyeball Shrink",
+      "category": "Eyes",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Shrink_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "eyeball_shrink_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "eyeball_shrink"
+      ]
+    },
+    {
+      "id": "eyeball_side_side_left",
+      "label": "Eyeball Side Side Left",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Side_Side_Left_Positive",
+      "negative_shape_key": "CC3_Eyeball_Side_Side_Left_Negative",
+      "positive_filename": "eyeball_side-side_left_max.Fbx",
+      "negative_filename": "eyeball_side-side_left_negative.Fbx",
+      "source_control_names": [
+        "eyeball_side-side_left"
+      ]
+    },
+    {
+      "id": "eyeball_side_side_right",
+      "label": "Eyeball Side Side Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Side_Side_Right_Positive",
+      "negative_shape_key": "CC3_Eyeball_Side_Side_Right_Negative",
+      "positive_filename": "eyeball_side-side_right_max.Fbx",
+      "negative_filename": "eyeball_side-side_right_negative.Fbx",
+      "source_control_names": [
+        "eyeball_side-side_right"
+      ]
+    },
+    {
+      "id": "eyeball_up_down",
+      "label": "Eyeball Up Down",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Up_Down_Positive",
+      "negative_shape_key": "CC3_Eyeball_Up_Down_Negative",
+      "positive_filename": "eyeball_up-down_max.Fbx",
+      "negative_filename": "eyeball_up-down_negative.Fbx",
+      "source_control_names": [
+        "eyeball_up-down"
+      ]
+    },
+    {
+      "id": "eyeball_up_down_left",
+      "label": "Eyeball Up Down Left",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Up_Down_Left_Positive",
+      "negative_shape_key": "CC3_Eyeball_Up_Down_Left_Negative",
+      "positive_filename": "eyeball_up-down_left_max.Fbx",
+      "negative_filename": "eyeball_up-down_left_negative.Fbx",
+      "source_control_names": [
+        "eyeball_up-down_left"
+      ]
+    },
+    {
+      "id": "eyeball_up_down_right",
+      "label": "Eyeball Up Down Right",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyeball_Up_Down_Right_Positive",
+      "negative_shape_key": "CC3_Eyeball_Up_Down_Right_Negative",
+      "positive_filename": "eyeball_up-down_right_max.Fbx",
+      "negative_filename": "eyeball_up-down_right_negative.Fbx",
+      "source_control_names": [
+        "eyeball_up-down_right"
+      ]
+    },
+    {
+      "id": "eyelash_curl",
+      "label": "Eyelash Curl",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyelash_Curl_Positive",
+      "negative_shape_key": "CC3_Eyelash_Curl_Negative",
+      "positive_filename": "eyelash_curl_max.Fbx",
+      "negative_filename": "eyelash_curl_negative.Fbx",
+      "source_control_names": [
+        "eyelash_curl"
+      ]
+    },
+    {
+      "id": "eyelash_length",
+      "label": "Eyelash Length",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyelash_Length_Positive",
+      "negative_shape_key": "CC3_Eyelash_Length_Negative",
+      "positive_filename": "eyelash_length_max.Fbx",
+      "negative_filename": "eyelash_length_negative.Fbx",
+      "source_control_names": [
+        "eyelash_length"
+      ]
+    },
+    {
+      "id": "eyelid_bottom_in_height",
+      "label": "Eyelid Bottom In Height",
+      "category": "Eyes",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyelid_Bottom_In_Height_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "eyelid_bottom_in_height_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "eyelid_bottom_in_height"
+      ]
+    },
+    {
+      "id": "eyes_outer_inner_width",
+      "label": "Eyes Outer Inner Width",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyes_Outer_Inner_Width_Positive",
+      "negative_shape_key": "CC3_Eyes_Outer_Inner_Width_Negative",
+      "positive_filename": "eyes_outer_inner_width_max.Fbx",
+      "negative_filename": "eyes_outer_inner_width_negative.Fbx",
+      "source_control_names": [
+        "eyes_outer_inner_width"
+      ]
+    },
+    {
+      "id": "eyes_outer_width",
+      "label": "Eyes Outer Width",
+      "category": "Eyes",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Eyes_Outer_Width_Positive",
+      "negative_shape_key": "CC3_Eyes_Outer_Width_Negative",
+      "positive_filename": "eyes_outer_width_max.Fbx",
+      "negative_filename": "eyes_outer_width_negative.Fbx",
+      "source_control_names": [
+        "eyes_outer_width"
+      ]
+    },
+    {
+      "id": "lower_eyelid_up",
+      "label": "Lower Eyelid Up",
+      "category": "Eyes",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Lower_Eyelid_Up_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "lower_eyelid_up_,max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "lower_eyelid_up"
+      ]
+    },
+    {
+      "id": "brow_angle",
+      "label": "Brow Angle",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Brow_Angle_Positive",
+      "negative_shape_key": "CC3_Brow_Angle_Negative",
+      "positive_filename": "brow_angle_max.Fbx",
+      "negative_filename": "brow_angle_negative.Fbx",
+      "source_control_names": [
+        "brow_angle"
+      ]
+    },
+    {
+      "id": "brow_depth",
+      "label": "Brow Depth",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Brow_Depth_Positive",
+      "negative_shape_key": "CC3_Brow_Depth_Negative",
+      "positive_filename": "brow_depth_mx.Fbx",
+      "negative_filename": "brow_depth_negative.Fbx",
+      "source_control_names": [
+        "brow_depth"
+      ]
+    },
+    {
+      "id": "brow_height",
+      "label": "Brow Height",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Brow_Height_Positive",
+      "negative_shape_key": "CC3_Brow_Height_Negative",
+      "positive_filename": "brow_height_max.Fbx",
+      "negative_filename": "brow_height_negative.Fbx",
+      "source_control_names": [
+        "brow_height"
+      ]
+    },
+    {
+      "id": "brow_lower",
+      "label": "Brow Lower",
+      "category": "Head & Face",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Brow_Lower_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "brow_lower_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "brow_lower"
+      ]
+    },
+    {
+      "id": "cheek_bones_height",
+      "label": "Cheek Bones Height",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Cheek_Bones_Height_Positive",
+      "negative_shape_key": "CC3_Cheek_Bones_Height_Negative",
+      "positive_filename": "cheek_bones_height_max.Fbx",
+      "negative_filename": "cheek_bones_height_negative.Fbx",
+      "source_control_names": [
+        "cheek_bones_height"
+      ]
+    },
+    {
+      "id": "cheek_bones_size",
+      "label": "Cheek Bones Size",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Cheek_Bones_Size_Positive",
+      "negative_shape_key": "CC3_Cheek_Bones_Size_Negative",
+      "positive_filename": "cheek_bones_size_max.Fbx",
+      "negative_filename": "cheek_bones_size_negative.Fbx",
+      "source_control_names": [
+        "cheek_bones_size"
+      ]
+    },
+    {
+      "id": "cheek_sink",
+      "label": "Cheek Sink",
+      "category": "Head & Face",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Cheek_Sink_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "cheek_sink_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "cheek_sink"
+      ]
+    },
+    {
+      "id": "chin_depth",
+      "label": "Chin Depth",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chin_Depth_Positive",
+      "negative_shape_key": "CC3_Chin_Depth_Negative",
+      "positive_filename": "chin_depth_max.Fbx",
+      "negative_filename": "chin_depth_negative.Fbx",
+      "source_control_names": [
+        "chin_depth"
+      ]
+    },
+    {
+      "id": "chin_length",
+      "label": "Chin Length",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chin_Length_Positive",
+      "negative_shape_key": "CC3_Chin_Length_Negative",
+      "positive_filename": "chin_length_max.Fbx",
+      "negative_filename": "chin_length_negative.Fbx",
+      "source_control_names": [
+        "chin_length"
+      ]
+    },
+    {
+      "id": "chin_width",
+      "label": "Chin Width",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chin_Width_Positive",
+      "negative_shape_key": "CC3_Chin_Width_Negative",
+      "positive_filename": "chin_width_max.Fbx",
+      "negative_filename": "chin_width_negative.Fbx",
+      "source_control_names": [
+        "chin_width"
+      ]
+    },
+    {
+      "id": "cranium_slope",
+      "label": "Cranium Slope",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Cranium_Slope_Positive",
+      "negative_shape_key": "CC3_Cranium_Slope_Negative",
+      "positive_filename": "cranium_slope_max.Fbx",
+      "negative_filename": "cranium_slope_negative.Fbx",
+      "source_control_names": [
+        "cranium_slope"
+      ]
+    },
+    {
+      "id": "jaw_angle",
+      "label": "Jaw Angle",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Jaw_Angle_Positive",
+      "negative_shape_key": "CC3_Jaw_Angle_Negative",
+      "positive_filename": "jaw_angle_max.Fbx",
+      "negative_filename": "jaw_angle_negative.Fbx",
+      "source_control_names": [
+        "jaw_angle"
+      ]
+    },
+    {
+      "id": "jaw_define_02",
+      "label": "Jaw Define 02",
+      "category": "Head & Face",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Jaw_Define_02_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "jaw_define_02_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "jaw_define_02"
+      ]
+    },
+    {
+      "id": "jaw_height",
+      "label": "Jaw Height",
+      "category": "Head & Face",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Jaw_Height_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "jaw_height_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "jaw_height"
+      ]
+    },
+    {
+      "id": "jaw_size",
+      "label": "Jaw Size",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Jaw_Size_Positive",
+      "negative_shape_key": "CC3_Jaw_Size_Negative",
+      "positive_filename": "jaw_size_max.Fbx",
+      "negative_filename": "jaw_size_negative.Fbx",
+      "source_control_names": [
+        "jaw_size"
+      ]
+    },
+    {
+      "id": "near_brow",
+      "label": "Near Brow",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Near_Brow_Positive",
+      "negative_shape_key": "CC3_Near_Brow_Negative",
+      "positive_filename": "near_brow_max.Fbx",
+      "negative_filename": "near_brow_negative.Fbx",
+      "source_control_names": [
+        "near_brow"
+      ]
+    },
+    {
+      "id": "neck_length",
+      "label": "Neck Length",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Neck_Length_Positive",
+      "negative_shape_key": "CC3_Neck_Length_Negative",
+      "positive_filename": "neck_length_max.Fbx",
+      "negative_filename": "neck_length_negative.Fbx",
+      "source_control_names": [
+        "neck_length"
+      ]
+    },
+    {
+      "id": "neck_size",
+      "label": "Neck Size",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Neck_Size_Positive",
+      "negative_shape_key": "CC3_Neck_Size_Negative",
+      "positive_filename": "neck_size_max.Fbx",
+      "negative_filename": "neck_size_negative.Fbx",
+      "source_control_names": [
+        "neck_size"
+      ]
+    },
+    {
+      "id": "occiput_shape",
+      "label": "Occiput Shape",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Occiput_Shape_Positive",
+      "negative_shape_key": "CC3_Occiput_Shape_Negative",
+      "positive_filename": "occiput_shape_max.Fbx",
+      "negative_filename": "occiput_shape_negative.Fbx",
+      "source_control_names": [
+        "occiput_shape"
+      ]
+    },
+    {
+      "id": "skull_depth",
+      "label": "Skull Depth",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Skull_Depth_Positive",
+      "negative_shape_key": "CC3_Skull_Depth_Negative",
+      "positive_filename": "skull_depth_max.Fbx",
+      "negative_filename": "skull_depth_negative.Fbx",
+      "source_control_names": [
+        "skull_depth"
+      ]
+    },
+    {
+      "id": "skull_height",
+      "label": "Skull Height",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Skull_Height_Positive",
+      "negative_shape_key": "CC3_Skull_Height_Negative",
+      "positive_filename": "skull_height_max.Fbx",
+      "negative_filename": "skull_height_negative.Fbx",
+      "source_control_names": [
+        "skull_height"
+      ]
+    },
+    {
+      "id": "skull_width",
+      "label": "Skull Width",
+      "category": "Head & Face",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Skull_Width_Positive",
+      "negative_shape_key": "CC3_Skull_Width_Negative",
+      "positive_filename": "skull_width_max.Fbx",
+      "negative_filename": "skull_width_negative.Fbx",
+      "source_control_names": [
+        "skull_width",
+        "Skull_width"
+      ]
+    },
+    {
+      "id": "temples_size",
+      "label": "Temples Size",
+      "category": "Head & Face",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Temples_Size_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "temples_size_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "temples_size"
+      ]
+    },
+    {
+      "id": "ankle_tone",
+      "label": "Ankle Tone",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Ankle_Tone_Positive",
+      "negative_shape_key": "CC3_Ankle_Tone_Negative",
+      "positive_filename": "ankle_tone_max.Fbx",
+      "negative_filename": "ankle_tone_negative.Fbx",
+      "source_control_names": [
+        "ankle_tone"
+      ]
+    },
+    {
+      "id": "calves_size_02",
+      "label": "Calves Size 02",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Calves_Size_02_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "calves_size_02_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "calves_size_02"
+      ]
+    },
+    {
+      "id": "foot_arch_02",
+      "label": "Foot Arch 02",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Arch_02_Positive",
+      "negative_shape_key": "CC3_Foot_Arch_02_Negative",
+      "positive_filename": "foot_arch_02_max.Fbx",
+      "negative_filename": "foot_arch_02_negative.Fbx",
+      "source_control_names": [
+        "foot_arch_02"
+      ]
+    },
+    {
+      "id": "foot_length",
+      "label": "Foot Length",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Length_Positive",
+      "negative_shape_key": "CC3_Foot_Length_Negative",
+      "positive_filename": "foot_length_max.Fbx",
+      "negative_filename": "foot_length_negative.Fbx",
+      "source_control_names": [
+        "foot_length"
+      ]
+    },
+    {
+      "id": "foot_scale",
+      "label": "Foot Scale",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Scale_Positive",
+      "negative_shape_key": "CC3_Foot_Scale_Negative",
+      "positive_filename": "foot_scale_max.Fbx",
+      "negative_filename": "foot_scale_negative.Fbx",
+      "source_control_names": [
+        "foot_scale"
+      ]
+    },
+    {
+      "id": "foot_shape_02",
+      "label": "Foot Shape 02",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Shape_02_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "foot_shape_02_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "foot_shape_02"
+      ]
+    },
+    {
+      "id": "foot_thickness",
+      "label": "Foot Thickness",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Thickness_Positive",
+      "negative_shape_key": "CC3_Foot_Thickness_Negative",
+      "positive_filename": "foot_thickness_max.Fbx",
+      "negative_filename": "foot_thickness_negative.Fbx",
+      "source_control_names": [
+        "foot_thickness"
+      ]
+    },
+    {
+      "id": "foot_tone",
+      "label": "Foot Tone",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Foot_Tone_Positive",
+      "negative_shape_key": "CC3_Foot_Tone_Negative",
+      "positive_filename": "foot_tone_max.Fbx",
+      "negative_filename": "foot_tone_negative.Fbx",
+      "source_control_names": [
+        "foot_tone"
+      ]
+    },
+    {
+      "id": "hamstring_correction",
+      "label": "Hamstring Correction",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hamstring_Correction_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "hamstring_correction_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "hamstring_correction"
+      ]
+    },
+    {
+      "id": "knee_bone_width",
+      "label": "Knee Bone Width",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Knee_Bone_Width_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "knee_bone_width_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "knee_bone_width"
+      ]
+    },
+    {
+      "id": "knee_tone",
+      "label": "Knee Tone",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Knee_Tone_Positive",
+      "negative_shape_key": "CC3_Knee_Tone_Negative",
+      "positive_filename": "knee_tone_max.Fbx",
+      "negative_filename": "knee_tone_negative.Fbx",
+      "source_control_names": [
+        "knee_tone"
+      ]
+    },
+    {
+      "id": "leg_length",
+      "label": "Leg Length",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Leg_Length_Positive",
+      "negative_shape_key": "CC3_Leg_Length_Negative",
+      "positive_filename": "leg_length_max.Fbx",
+      "negative_filename": "leg_length_negative.Fbx",
+      "source_control_names": [
+        "leg_length"
+      ]
+    },
+    {
+      "id": "quadriceps",
+      "label": "Quadriceps",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Quadriceps_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "quadriceps_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "quadriceps"
+      ]
+    },
+    {
+      "id": "shin_length",
+      "label": "Shin Length",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shin_Length_Positive",
+      "negative_shape_key": "CC3_Shin_Length_Negative",
+      "positive_filename": "shin_length_max.Fbx",
+      "negative_filename": "shin_length_negative.Fbx",
+      "source_control_names": [
+        "shin_length"
+      ]
+    },
+    {
+      "id": "shin_size",
+      "label": "Shin Size",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Shin_Size_Positive",
+      "negative_shape_key": "CC3_Shin_Size_Negative",
+      "positive_filename": "shin_size_max.Fbx",
+      "negative_filename": "shin_size_negative.Fbx",
+      "source_control_names": [
+        "shin_size"
+      ]
+    },
+    {
+      "id": "thigh_length",
+      "label": "Thigh Length",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Thigh_Length_Positive",
+      "negative_shape_key": "CC3_Thigh_Length_Negative",
+      "positive_filename": "thigh_length_max.Fbx",
+      "negative_filename": "thigh_length_negative.Fbx",
+      "source_control_names": [
+        "thigh_length"
+      ]
+    },
+    {
+      "id": "thigh_lower_inner",
+      "label": "Thigh Lower Inner",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Thigh_Lower_Inner_Positive",
+      "negative_shape_key": "CC3_Thigh_Lower_Inner_Negative",
+      "positive_filename": "thigh_lower_inner_max.Fbx",
+      "negative_filename": "thigh_lower_inner_negative.Fbx",
+      "source_control_names": [
+        "thigh_lower_inner"
+      ]
+    },
+    {
+      "id": "thigh_size",
+      "label": "Thigh Size",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Thigh_Size_Positive",
+      "negative_shape_key": "CC3_Thigh_Size_Negative",
+      "positive_filename": "thigh_size_max.Fbx",
+      "negative_filename": "thigh_size_negative.Fbx",
+      "source_control_names": [
+        "thigh_size"
+      ]
+    },
+    {
+      "id": "toe_depth",
+      "label": "Toe Depth",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Toe_Depth_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "toe_depth_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "toe_depth"
+      ]
+    },
+    {
+      "id": "toe_length",
+      "label": "Toe Length",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Toe_Length_Positive",
+      "negative_shape_key": "CC3_Toe_Length_Negative",
+      "positive_filename": "toe_length_max.Fbx",
+      "negative_filename": "toe_length_negative.Fbx",
+      "source_control_names": [
+        "toe_length"
+      ]
+    },
+    {
+      "id": "toe_tip_size",
+      "label": "Toe Tip Size",
+      "category": "Legs & Feet",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Toe_Tip_Size_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "toe_tip_size_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "toe_tip_size"
+      ]
+    },
+    {
+      "id": "toe_width",
+      "label": "Toe Width",
+      "category": "Legs & Feet",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Toe_Width_Positive",
+      "negative_shape_key": "CC3_Toe_Width_Negative",
+      "positive_filename": "toe_width_max.Fbx",
+      "negative_filename": "toe_width_negative.Fbx",
+      "source_control_names": [
+        "toe_width"
+      ]
+    },
+    {
+      "id": "lip_tone",
+      "label": "Lip Tone",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Lip_Tone_Positive",
+      "negative_shape_key": "CC3_Lip_Tone_Negative",
+      "positive_filename": "lip_tone_max.Fbx",
+      "negative_filename": "lip_tone_negative.Fbx",
+      "source_control_names": [
+        "lip_tone"
+      ]
+    },
+    {
+      "id": "mouth_depth",
+      "label": "Mouth Depth",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Mouth_Depth_Positive",
+      "negative_shape_key": "CC3_Mouth_Depth_Negative",
+      "positive_filename": "mouth_depth_max.Fbx",
+      "negative_filename": "mouth_depth_negative.Fbx",
+      "source_control_names": [
+        "mouth_depth"
+      ]
+    },
+    {
+      "id": "mouth_height",
+      "label": "Mouth Height",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Mouth_Height_Positive",
+      "negative_shape_key": "CC3_Mouth_Height_Negative",
+      "positive_filename": "mouth_height_max.Fbx",
+      "negative_filename": "mouth_height_negative.Fbx",
+      "source_control_names": [
+        "mouth_height"
+      ]
+    },
+    {
+      "id": "mouth_size",
+      "label": "Mouth Size",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Mouth_Size_Positive",
+      "negative_shape_key": "CC3_Mouth_Size_Negative",
+      "positive_filename": "mouth_size_max.Fbx",
+      "negative_filename": "mouth_size_negative.Fbx",
+      "source_control_names": [
+        "mouth_size"
+      ]
+    },
+    {
+      "id": "mouth_width",
+      "label": "Mouth Width",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Mouth_Width_Positive",
+      "negative_shape_key": "CC3_Mouth_Width_Negative",
+      "positive_filename": "mouth_width_max.Fbx",
+      "negative_filename": "mouth_width_negative.Fbx",
+      "source_control_names": [
+        "mouth_width"
+      ]
+    },
+    {
+      "id": "upper_lip_groove_tone",
+      "label": "Upper Lip Groove Tone",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Upper_Lip_Groove_Tone_Positive",
+      "negative_shape_key": "CC3_Upper_Lip_Groove_Tone_Negative",
+      "positive_filename": "upper_lip_groove_tone_max.Fbx",
+      "negative_filename": "upper_lip_groove_tone_negative.Fbx",
+      "source_control_names": [
+        "upper_lip_groove_tone"
+      ]
+    },
+    {
+      "id": "upper_lip_groove_width",
+      "label": "Upper Lip Groove Width",
+      "category": "Mouth & Lips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Upper_Lip_Groove_Width_Positive",
+      "negative_shape_key": "CC3_Upper_Lip_Groove_Width_Negative",
+      "positive_filename": "upper_lip_groove_width_max.Fbx",
+      "negative_filename": "upper_lip_groove_width_negative.Fbx",
+      "source_control_names": [
+        "upper_lip_groove_width"
+      ]
+    },
+    {
+      "id": "nose_bridge_depth",
+      "label": "Nose Bridge Depth",
+      "category": "Nose",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Bridge_Depth_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "nose_bridge_depth_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "nose_bridge_depth"
+      ]
+    },
+    {
+      "id": "nose_bump",
+      "label": "Nose Bump",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Bump_Positive",
+      "negative_shape_key": "CC3_Nose_Bump_Negative",
+      "positive_filename": "nose_bump_max.Fbx",
+      "negative_filename": "nose_bump_negative.Fbx",
+      "source_control_names": [
+        "nose_bump"
+      ]
+    },
+    {
+      "id": "nose_depth",
+      "label": "Nose Depth",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Depth_Positive",
+      "negative_shape_key": "CC3_Nose_Depth_Negative",
+      "positive_filename": "nose_depth_max.Fbx",
+      "negative_filename": "nose_depth_negative.Fbx",
+      "source_control_names": [
+        "nose_depth"
+      ]
+    },
+    {
+      "id": "nose_height",
+      "label": "Nose Height",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Height_Positive",
+      "negative_shape_key": "CC3_Nose_Height_Negative",
+      "positive_filename": "nose_height_max.Fbx",
+      "negative_filename": "nose_height_negative.Fbx",
+      "source_control_names": [
+        "nose_height"
+      ]
+    },
+    {
+      "id": "nose_size",
+      "label": "Nose Size",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Size_Positive",
+      "negative_shape_key": "CC3_Nose_Size_Negative",
+      "positive_filename": "nose_size_max.Fbx",
+      "negative_filename": "nose_size_negative.Fbx",
+      "source_control_names": [
+        "nose_size"
+      ]
+    },
+    {
+      "id": "nose_tip_height",
+      "label": "Nose Tip Height",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Tip_Height_Positive",
+      "negative_shape_key": "CC3_Nose_Tip_Height_Negative",
+      "positive_filename": "nose_tip_height_max.Fbx",
+      "negative_filename": "nose_tip_height_negative.Fbx",
+      "source_control_names": [
+        "nose_tip_height"
+      ]
+    },
+    {
+      "id": "nose_width",
+      "label": "Nose Width",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nose_Width_Positive",
+      "negative_shape_key": "CC3_Nose_Width_Negative",
+      "positive_filename": "nose_width_max.Fbx",
+      "negative_filename": "nose_width_negative.Fbx",
+      "source_control_names": [
+        "nose_width"
+      ]
+    },
+    {
+      "id": "nostril_bridge_depth",
+      "label": "Nostril Bridge Depth",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 0,
+      "positive_shape_key": null,
+      "negative_shape_key": "CC3_Nostril_Bridge_Depth_Negative",
+      "positive_filename": null,
+      "negative_filename": "nostril_bridge_depth_negative.Fbx",
+      "source_control_names": [
+        "nostril_bridge_depth"
+      ]
+    },
+    {
+      "id": "nostrils_width",
+      "label": "Nostrils Width",
+      "category": "Nose",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nostrils_Width_Positive",
+      "negative_shape_key": "CC3_Nostrils_Width_Negative",
+      "positive_filename": "nostrils_width_max.Fbx",
+      "negative_filename": "nostrils_width_negative.Fbx",
+      "source_control_names": [
+        "nostrils_width"
+      ]
+    },
+    {
+      "id": "abdomen_depth",
+      "label": "Abdomen Depth",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Abdomen_Depth_Positive",
+      "negative_shape_key": "CC3_Abdomen_Depth_Negative",
+      "positive_filename": "abdomen_depth_max.Fbx",
+      "negative_filename": "abdomen_depth_negative.Fbx",
+      "source_control_names": [
+        "abdomen_depth"
+      ]
+    },
+    {
+      "id": "abdomen_middle",
+      "label": "Abdomen Middle",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Abdomen_Middle_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "abdomen_middle_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "abdomen_middle"
+      ]
+    },
+    {
+      "id": "chest_depth",
+      "label": "Chest Depth",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chest_Depth_Positive",
+      "negative_shape_key": "CC3_Chest_Depth_Negative",
+      "positive_filename": "chest_depth_max.Fbx",
+      "negative_filename": "chest_depth_negative.Fbx",
+      "source_control_names": [
+        "chest_depth"
+      ]
+    },
+    {
+      "id": "chest_scale",
+      "label": "Chest Scale",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chest_Scale_Positive",
+      "negative_shape_key": "CC3_Chest_Scale_Negative",
+      "positive_filename": "chest_scale_max.Fbx",
+      "negative_filename": "chest_scale_negative.Fbx",
+      "source_control_names": [
+        "chest_scale"
+      ]
+    },
+    {
+      "id": "chest_width",
+      "label": "Chest Width",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Chest_Width_Positive",
+      "negative_shape_key": "CC3_Chest_Width_Negative",
+      "positive_filename": "chest_width_max.Fbx",
+      "negative_filename": "chest_width_negative.Fbx",
+      "source_control_names": [
+        "chest_width"
+      ]
+    },
+    {
+      "id": "glutes_height",
+      "label": "Glutes Height",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Glutes_Height_Positive",
+      "negative_shape_key": "CC3_Glutes_Height_Negative",
+      "positive_filename": "glutes_height_max.Fbx",
+      "negative_filename": "glutes_height_negative.Fbx",
+      "source_control_names": [
+        "glutes_height"
+      ]
+    },
+    {
+      "id": "glutes_size",
+      "label": "Glutes Size",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Glutes_Size_Positive",
+      "negative_shape_key": "CC3_Glutes_Size_Negative",
+      "positive_filename": "glutes_size_max.Fbx",
+      "negative_filename": "glutes_size_negative.Fbx",
+      "source_control_names": [
+        "glutes_size"
+      ]
+    },
+    {
+      "id": "hip_length",
+      "label": "Hip Length",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hip_Length_Positive",
+      "negative_shape_key": "CC3_Hip_Length_Negative",
+      "positive_filename": "hip_length_max.Fbx",
+      "negative_filename": "hip_length_negative.Fbx",
+      "source_control_names": [
+        "hip_length"
+      ]
+    },
+    {
+      "id": "hip_size",
+      "label": "Hip Size",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Hip_Size_Positive",
+      "negative_shape_key": "CC3_Hip_Size_Negative",
+      "positive_filename": "hip_size_max.Fbx",
+      "negative_filename": "hip_size_negative.Fbx",
+      "source_control_names": [
+        "hip_size"
+      ]
+    },
+    {
+      "id": "love_handles",
+      "label": "Love Handles",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Love_Handles_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "love_handles_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "love_handles"
+      ]
+    },
+    {
+      "id": "navel",
+      "label": "Navel",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Navel_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "navel_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "navel"
+      ]
+    },
+    {
+      "id": "nipple_depth",
+      "label": "Nipple Depth",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Nipple_Depth_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "nipple_depth_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "nipple_depth"
+      ]
+    },
+    {
+      "id": "pectoral_height",
+      "label": "Pectoral Height",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Pectoral_Height_Positive",
+      "negative_shape_key": "CC3_Pectoral_Height_Negative",
+      "positive_filename": "pectoral_height_max.Fbx",
+      "negative_filename": "pectoral_height_negative.Fbx",
+      "source_control_names": [
+        "pectoral_height"
+      ]
+    },
+    {
+      "id": "pectoral_size",
+      "label": "Pectoral Size",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Pectoral_Size_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "pectoral_size_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "pectoral_size"
+      ]
+    },
+    {
+      "id": "pelvis_width",
+      "label": "Pelvis Width",
+      "category": "Torso & Hips",
+      "minimum": 0,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Pelvis_Width_Positive",
+      "negative_shape_key": null,
+      "positive_filename": "pelvis_width_max.Fbx",
+      "negative_filename": null,
+      "source_control_names": [
+        "pelvis_width"
+      ]
+    },
+    {
+      "id": "torso_length",
+      "label": "Torso Length",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Torso_Length_Positive",
+      "negative_shape_key": "CC3_Torso_Length_Negative",
+      "positive_filename": "torso_length_max.Fbx",
+      "negative_filename": "torso_length_negative.Fbx",
+      "source_control_names": [
+        "torso_length"
+      ]
+    },
+    {
+      "id": "waist_width",
+      "label": "Waist Width",
+      "category": "Torso & Hips",
+      "minimum": -1,
+      "maximum": 1,
+      "positive_shape_key": "CC3_Waist_Width_Positive",
+      "negative_shape_key": "CC3_Waist_Width_Negative",
+      "positive_filename": "waist_width_max.Fbx",
+      "negative_filename": "waist_width_negative.Fbx",
+      "source_control_names": [
+        "waist_width"
+      ]
+    }
+  ],
+  "body_shape_key_count": 313,
+  "base_body_shape_key_count": 85,
+  "neutral_sha256": "1964f19c69bcd694961a4f73fba4820451e210fc0808264ae8a74cf37b3a152d",
+  "base_glb_sha256": "8f585bfdf544a95e0f729f23d4328ea492063a8bffb0e4a2b327dfec457f2fc9",
+  "glb_sha256": "f89fef18ed3620a52c0b72a7a65db07a2daf48ec11951dfc30b8b41987e3956c",
+  "glb_bytes": 101389840
+}

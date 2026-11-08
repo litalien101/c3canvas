@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run CoModel Studio Copilot Bridge",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/starter/vscode-extension"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/starter/vscode-extension/**/*.js"
+      ]
+    }
+  ]
+}

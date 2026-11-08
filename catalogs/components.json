@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "eye-game-multiUV",
+      "label": "eye_game_multiUV",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_game_multiUV/eye_game_multiUV/eye_game_multiUV.Fbx",
+      "generated_path": "generated_assets/eyes/eye_game_multiUV.glb"
+    },
+    {
+      "id": "eye-game-oneUV",
+      "label": "eye_game_oneUV",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_game_oneUV/eye_game_oneUV/eye_game_oneUV.Fbx",
+      "generated_path": "generated_assets/eyes/eye_game_oneUV.glb"
+    },
+    {
+      "id": "eye-normal-1",
+      "label": "eye_normal_1",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_1/eye_normal_1/eye_normal_1.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_1.glb"
+    },
+    {
+      "id": "eye-normal-10",
+      "label": "eye_normal_10",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_10/eye_normal_10/eye_normal_10.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_10.glb"
+    },
+    {
+      "id": "eye-normal-11",
+      "label": "eye_normal_11",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_11/eye_normal_11/eye_normal_11.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_11.glb"
+    },
+    {
+      "id": "eye-normal-12",
+      "label": "eye_normal_12",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_12/eye_normal_12/eye_normal_12.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_12.glb"
+    },
+    {
+      "id": "eye-normal-2",
+      "label": "eye_normal_2",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_2/eye_normal_2/eye_normal_2.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_2.glb"
+    },
+    {
+      "id": "eye-normal-3",
+      "label": "eye_normal_3",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_3/eye_normal_3/eye_normal_3.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_3.glb"
+    },
+    {
+      "id": "eye-normal-4",
+      "label": "eye_normal_4",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_4/eye_normal_4/eye_normal_4.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_4.glb"
+    },
+    {
+      "id": "eye-normal-5",
+      "label": "eye_normal_5",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_5/eye_normal_5/eye_normal_5.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_5.glb"
+    },
+    {
+      "id": "eye-normal-6",
+      "label": "eye_normal_6",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_6/eye_normal_6/eye_normal_6.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_6.glb"
+    },
+    {
+      "id": "eye-normal-7",
+      "label": "eye_normal_7",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_7/eye_normal_7/eye_normal_7.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_7.glb"
+    },
+    {
+      "id": "eye-normal-8",
+      "label": "eye_normal_8",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_8/eye_normal_8/eye_normal_8.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_8.glb"
+    },
+    {
+      "id": "eye-normal-9",
+      "label": "eye_normal_9",
+      "category": "eyes",
+      "runtime_source_path": "source_archive/eyes/eye_normal_9/eye_normal_9/eye_normal_9.Fbx",
+      "generated_path": "generated_assets/eyes/eye_normal_9.glb"
+    }
+  ]
+}

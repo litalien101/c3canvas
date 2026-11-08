@@ -1,0 +1,27 @@
+{
+  "plan_version": 1,
+  "target_profile": "general_purpose",
+  "reference_observations": [
+    {"feature": "pose", "value": "neutral T-pose", "confidence": 0.95, "evidence": "user_requested"},
+    {"feature": "jacket_material", "value": "leather-like", "confidence": 0.72, "evidence": "visual_inference"},
+    {"feature": "back_design", "value": "unknown", "confidence": 0.0, "evidence": "not_visible"}
+  ],
+  "phase_templates": [
+    {"phase_key": "reference_plan", "title": "Reference analysis and plan", "requires_approval": true, "depends_on": []},
+    {"phase_key": "body_blockout", "title": "Base body blockout", "requires_approval": true, "depends_on": ["reference_plan"]},
+    {"phase_key": "body_refinement", "title": "Base body refinement", "requires_approval": true, "depends_on": ["body_blockout"]},
+    {"phase_key": "body_materials", "title": "Body materials and skin", "requires_approval": true, "depends_on": ["body_refinement"]},
+    {"phase_key": "garment_jacket", "title": "Jacket", "requires_approval": true, "depends_on": ["body_refinement"]},
+    {"phase_key": "footwear", "title": "Footwear", "requires_approval": true, "depends_on": ["body_refinement"]},
+    {"phase_key": "accessories", "title": "Accessories", "requires_approval": true, "depends_on": ["body_refinement"]},
+    {"phase_key": "validation_export", "title": "Validate and export", "requires_approval": true, "depends_on": ["body_materials", "garment_jacket", "footwear", "accessories"]}
+  ],
+  "components": [
+    {"key": "body", "name": "Base Body", "type": "body", "granularity": "appropriate_for_target"},
+    {"key": "skin", "name": "Skin Material", "type": "material", "granularity": "one_or_more_material_slots"},
+    {"key": "jacket", "name": "Jacket", "type": "garment", "fit_target": "body", "independent": true},
+    {"key": "left_boot", "name": "Left Boot", "type": "footwear", "independent": true},
+    {"key": "right_boot", "name": "Right Boot", "type": "footwear", "independent": true},
+    {"key": "accessories", "name": "Accessories", "type": "accessory", "granularity": "split_only_when_editability_benefits"}
+  ]
+}

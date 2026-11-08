@@ -1,0 +1,1631 @@
+openapi: 3.1.0
+info:
+  title: CoModel Studio API
+  version: 0.1.0
+paths:
+  /api/v1/health:
+    get:
+      summary: Health
+      operationId: health_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Health Api V1 Health Get
+  /api/v1/models:
+    get:
+      summary: List Available Models
+      description: Returns lightweight metadata and pinned preview hashes without downloading every model's morph-control specifications.
+      operationId: list_available_models_api_v1_models_get
+      responses:
+        '200':
+          description: Available character models
+          content:
+            application/json:
+              schema:
+                items:
+                  type: object
+                  required:
+                  - asset_id
+                  - name
+                  - detail
+                  - category
+                  - morph_control_count
+                  - glb_sha256
+                  - preview_sha256
+                  - morph_preview_mode
+                  - requires_approval
+                  properties:
+                    asset_id:
+                      type: string
+                      enum:
+                      - character_cc3_morphs_v1
+                      - character_cc3_male_morphs_v1
+                      - character_cc5_rlcc3plus_all_morphs_v1
+                    name:
+                      type: string
+                    detail:
+                      type: string
+                    category:
+                      type: string
+                      enum:
+                      - character
+                    morph_control_count:
+                      type: integer
+                    glb_sha256:
+                      type: string
+                    preview_sha256:
+                      type: string
+                    startup_preview_sha256:
+                      type:
+                      - string
+                      - 'null'
+                    morph_preview_mode:
+                      type: string
+                      enum:
+                      - client
+                      - server
+                    requires_approval:
+                      type: boolean
+                type: array
+                title: Response List Available Models Api V1 Models Get
+  /api/v1/models/{asset_id}/morph-controls:
+    get:
+      summary: List Model Morph Controls
+      description: Returns manifest-backed morph-control specifications for a single installed model.
+      operationId: list_model_morph_controls_api_v1_models__asset_id__morph_controls_get
+      parameters:
+      - name: asset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - character_cc3_morphs_v1
+          - character_cc3_male_morphs_v1
+          - character_cc5_rlcc3plus_all_morphs_v1
+          title: Asset Id
+      responses:
+        '200':
+          description: Manifest-backed morph controls
+          content:
+            application/json:
+              schema:
+                items:
+                  type: object
+                  required:
+                  - id
+                  - label
+                  - category
+                  - minimum
+                  - maximum
+                  properties:
+                    id:
+                      type: string
+                    label:
+                      type: string
+                    category:
+                      type: string
+                    minimum:
+                      type: number
+                    maximum:
+                      type: number
+                    positive_shape_key:
+                      type:
+                      - string
+                      - 'null'
+                    negative_shape_key:
+                      type:
+                      - string
+                      - 'null'
+                    positive_filename:
+                      type:
+                      - string
+                      - 'null'
+                    negative_filename:
+                      type:
+                      - string
+                      - 'null'
+                    source_control_names:
+                      items:
+                        type: string
+                      type: array
+                type: array
+                title: Response List Model Morph Controls Api V1 Models Asset Id Morph Controls Get
+        '404':
+          description: Model or its controls are unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/models/{asset_id}/morph-preview:
+    get:
+      summary: Read Base Model Morph Preview
+      description: Serves the integrity-checked morph-target preview for browser-local CC3 morph editing. The larger asset is requested only when the user adjusts a slider.
+      operationId: read_base_model_morph_preview_api_v1_models__asset_id__morph_preview_get
+      parameters:
+      - name: asset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - character_cc3_morphs_v1
+          - character_cc3_male_morphs_v1
+          - character_cc5_rlcc3plus_all_morphs_v1
+          title: Asset Id
+      - name: sha256
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Sha256
+      responses:
+        '200':
+          description: Integrity-checked GLB morph asset
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Asset is not installed
+        '409':
+          description: Asset hash is stale
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/models/{asset_id}/startup-preview:
+    get:
+      summary: Read Base Model Startup Preview
+      description: Serves an optional integrity-checked static preview without morph targets for fast initial loading.
+      operationId: read_base_model_startup_preview_api_v1_models__asset_id__startup_preview_get
+      parameters:
+      - name: asset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - character_cc3_morphs_v1
+          - character_cc3_male_morphs_v1
+          - character_cc5_rlcc3plus_all_morphs_v1
+        title: Asset Id
+      - name: sha256
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Sha256
+      - name: preview_sha256
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Preview Sha256
+      responses:
+        '200':
+          description: Integrity-checked static preview GLB
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Startup preview is not installed
+        '409':
+          description: Asset or preview hash is stale
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/assets/eyes/{asset_id}/preview:
+    get:
+      summary: Read Eye Asset Preview
+      description: Serves only the integrity-verified eye-only GLB selected for browser preview; it does not invoke Blender.
+      operationId: read_eye_asset_preview_api_v1_assets_eyes__asset_id__preview_get
+      parameters:
+      - name: asset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Asset Id
+      - name: sha256
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Sha256
+      responses:
+        '200':
+          description: Integrity-checked eye-only GLB preview
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Eye preview is unavailable
+        '409':
+          description: Eye preview hash is stale
+  /api/v1/projects:
+    get:
+      summary: List Projects
+      operationId: list_projects_api_v1_projects_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Project'
+                type: array
+                title: Response List Projects Api V1 Projects Get
+    post:
+      summary: Create Project
+      operationId: create_project_api_v1_projects_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}:
+    get:
+      summary: Get Project
+      operationId: get_project_api_v1_projects__project_id__get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Update Project
+      operationId: update_project_api_v1_projects__project_id__patch
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/summary:
+    get:
+      summary: List Project Summaries
+      description: Returns only fields needed by the saved-project menu.
+      operationId: list_project_summaries_api_v1_projects_summary_get
+      responses:
+        '200':
+          description: Compact project list
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ProjectSummary'
+                type: array
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/draft-appearance:
+    patch:
+      summary: Update Draft Appearance
+      description: Persists eye and preset choices as browser draft data without invoking Blender or changing scene_version.
+      operationId: update_project_draft_appearance_api_v1_projects__project_id__draft_appearance_patch
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftAppearanceUpdateRequest'
+      responses:
+        '200':
+          description: Updated project draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '409':
+          description: Project is already compiled
+        '422':
+          description: Invalid eye or preset selection
+  /api/v1/projects/{project_id}/preview:
+    get:
+      summary: Read Project Preview
+      operationId: read_project_preview_api_v1_projects__project_id__preview_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Lightweight viewport GLB preview; morph targets are loaded from the pinned source asset on demand
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+        '503':
+          description: Blender could not refresh a legacy morph-heavy preview
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/plan:
+    post:
+      summary: Create Project Plan
+      operationId: create_project_plan_api_v1_projects__project_id__plan_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Update Project Plan
+      operationId: update_project_plan_api_v1_projects__project_id__plan_patch
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/references:
+    post:
+      summary: Upload Reference
+      operationId: upload_reference_api_v1_projects__project_id__references_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_reference_api_v1_projects__project_id__references_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Upload Reference Api V1 Projects  Project Id  References
+                  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: List References
+      operationId: list_references_api_v1_projects__project_id__references_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List References Api V1 Projects  Project Id  References
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/references/{reference_id}:
+    delete:
+      summary: Delete Reference
+      operationId: delete_reference_api_v1_projects__project_id__references__reference_id__delete
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      - name: reference_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Reference Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/chat:
+    get:
+      summary: List Chat Messages
+      operationId: list_chat_messages_api_v1_projects__project_id__chat_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List Chat Messages Api V1 Projects  Project Id  Chat
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      summary: Clear Chat Messages
+      operationId: clear_chat_messages_api_v1_projects__project_id__chat_delete
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      summary: Append Chat Message
+      operationId: append_chat_message_api_v1_projects__project_id__chat_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id:
+                    type: string
+                    format: uuid
+                  assistant_message_id:
+                    type: string
+                    format: uuid
+                  job_id:
+                    type: 'null'
+                  intent:
+                    type: string
+                  scope:
+                    type: array
+                    items:
+                      type: string
+                  assistant_message:
+                    type: string
+                  assistant_proposal:
+                    anyOf:
+                    - $ref: '#/components/schemas/AssistantProposal'
+                    - type: 'null'
+                  guidance:
+                    anyOf:
+                    - $ref: '#/components/schemas/AssistantGuidance'
+                    - type: 'null'
+                  interaction_warning:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                  ai_provider:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                  model:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                  project:
+                    $ref: '#/components/schemas/Project'
+                required:
+                - message_id
+                - assistant_message_id
+                - job_id
+                - intent
+                - scope
+                - assistant_message
+                - assistant_proposal
+                - guidance
+                - interaction_warning
+                - ai_provider
+                - model
+                - project
+                title: ChatResponse
+        '413':
+          description: Chat context exceeds the configured request budget
+        '502':
+          description: Assistant returned invalid structured output
+        '503':
+          description: Copilot bridge is unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/copilot/status:
+    get:
+      summary: Get Copilot Status
+      operationId: get_copilot_status_api_v1_copilot_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Copilot Status Api V1 Copilot Status Get
+  /api/v1/projects/{project_id}/phases:
+    get:
+      summary: List Phases
+      operationId: list_phases_api_v1_projects__project_id__phases_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Phase'
+                title: Response List Phases Api V1 Projects  Project Id  Phases Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/phases/{phase_id}/approve:
+    post:
+      summary: Approve Phase
+      operationId: approve_phase_api_v1_projects__project_id__phases__phase_id__approve_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      - name: phase_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Phase Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/components:
+    get:
+      summary: List Components
+      operationId: list_components_api_v1_projects__project_id__components_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List Components Api V1 Projects  Project Id  Components
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/operations:
+    get:
+      summary: List Modeling Operations
+      operationId: list_modeling_operations_api_v1_projects__project_id__operations_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelingOperation'
+                title: Response List Modeling Operations Api V1 Projects  Project
+                  Id  Operations Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/modeling-tools:
+    post:
+      summary: Call Modeling Tool
+      operationId: call_modeling_tool_api_v1_projects__project_id__modeling_tools_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: '#/components/schemas/ImportBaseModelTool'
+              - $ref: '#/components/schemas/ApplyCC3MorphControlsTool'
+              discriminator:
+                propertyName: tool_name
+                mapping:
+                  import_base_model: '#/components/schemas/ImportBaseModelTool'
+                  apply_cc3_morph_controls: '#/components/schemas/ApplyCC3MorphControlsTool'
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelingToolResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/checkpoints:
+    get:
+      summary: List Checkpoints
+      operationId: list_checkpoints_api_v1_projects__project_id__checkpoints_get
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List Checkpoints Api V1 Projects  Project Id  Checkpoints
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/checkpoints/{checkpoint_id}/restore:
+    post:
+      summary: Restore Checkpoint
+      operationId: restore_checkpoint_api_v1_projects__project_id__checkpoints__checkpoint_id__restore_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      - name: checkpoint_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Checkpoint Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/projects/{project_id}/export:
+    post:
+      summary: Export Project
+      operationId: export_project_api_v1_projects__project_id__export_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Export Project Api V1 Projects  Project Id  Export
+                  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ApplyCC3MorphControlsArguments:
+      properties:
+        component_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Component Id
+        morphs:
+          additionalProperties:
+            type: number
+          type: object
+          maxProperties: 256
+          minProperties: 1
+          title: Morphs
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      - morphs
+      title: ApplyCC3MorphControlsArguments
+    ApplyCC3MorphControlsTool:
+      properties:
+        tool_name:
+          type: string
+          const: apply_cc3_morph_controls
+          title: Tool Name
+        operation_id:
+          type: string
+          format: uuid
+          title: Operation Id
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+        scope_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 1
+          minItems: 1
+          title: Scope Component Ids
+        dependency_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 0
+          title: Dependency Component Ids
+        arguments:
+          $ref: '#/components/schemas/ApplyCC3MorphControlsArguments'
+      additionalProperties: false
+      type: object
+      required:
+      - tool_name
+      - operation_id
+      - expected_scene_version
+      - scope_component_ids
+      - arguments
+      title: ApplyCC3MorphControlsTool
+    ApprovalRequest:
+      properties:
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+      type: object
+      required:
+      - expected_scene_version
+      title: ApprovalRequest
+    Body_upload_reference_api_v1_projects__project_id__references_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        user_notes:
+          type: string
+          maxLength: 1000
+          title: User Notes
+          default: ''
+      type: object
+      required:
+      - file
+      title: Body_upload_reference_api_v1_projects__project_id__references_post
+    ChatRequest:
+      properties:
+        message:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Message
+        selected_component_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Selected Component Id
+      type: object
+      required:
+      - message
+      title: ChatRequest
+    AssistantProposal:
+      properties:
+        morph_updates:
+          type: object
+          additionalProperties:
+            type: number
+        appearance_updates:
+          $ref: '#/components/schemas/AssistantAppearanceUpdates'
+      type: object
+      required:
+      - morph_updates
+      - appearance_updates
+      additionalProperties: false
+      title: AssistantProposal
+    AssistantAppearanceUpdates:
+      properties:
+        eye_asset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+        body_preset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+        skin_asset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+      type: object
+      additionalProperties: false
+      title: AssistantAppearanceUpdates
+    AssistantGuidance:
+      properties:
+        target_id:
+          type: string
+          maxLength: 180
+          minLength: 1
+        title:
+          type: string
+          maxLength: 100
+          minLength: 1
+        message:
+          type: string
+          maxLength: 700
+          minLength: 1
+      type: object
+      required:
+      - target_id
+      - title
+      - message
+      additionalProperties: false
+      title: AssistantGuidance
+    EditablePlanComponent:
+      properties:
+        display_name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Display Name
+        semantic_type:
+          type: string
+          enum:
+          - body
+          - material
+          - garment
+          - footwear
+          - accessory
+          title: Semantic Type
+        phase_key:
+          type: string
+          enum:
+          - body_blockout
+          - body_materials
+          - garment_jacket
+          - footwear
+          - accessories
+          title: Phase Key
+        optional:
+          type: boolean
+          title: Optional
+          default: false
+        dependencies:
+          items:
+            type: string
+          type: array
+          maxItems: 5
+          title: Dependencies
+        assumptions:
+          items:
+            type: string
+          type: array
+          maxItems: 5
+          title: Assumptions
+        id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Id
+      additionalProperties: false
+      type: object
+      required:
+      - display_name
+      - semantic_type
+      - phase_key
+      title: EditablePlanComponent
+    DraftAppearanceUpdateRequest:
+      properties:
+        eye_asset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Eye Asset Id
+        body_preset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Body Preset Id
+      additionalProperties: false
+      type: object
+      required:
+      - eye_asset_id
+      - body_preset_id
+      title: DraftAppearanceUpdateRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ImportBaseModelArguments:
+      properties:
+        asset_id:
+          type: string
+          const: character_cc3_morphs_v1
+          title: Asset Id
+      additionalProperties: false
+      type: object
+      required:
+      - asset_id
+      title: ImportBaseModelArguments
+    ImportBaseModelTool:
+      properties:
+        tool_name:
+          type: string
+          const: import_base_model
+          title: Tool Name
+        operation_id:
+          type: string
+          format: uuid
+          title: Operation Id
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+        scope_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 0
+          title: Scope Component Ids
+        dependency_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 0
+          title: Dependency Component Ids
+        arguments:
+          $ref: '#/components/schemas/ImportBaseModelArguments'
+      additionalProperties: false
+      type: object
+      required:
+      - tool_name
+      - operation_id
+      - expected_scene_version
+      - arguments
+      title: ImportBaseModelTool
+    ModelingOperation:
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          title: Operation Id
+        tool_name:
+          type: string
+          enum:
+          - import_base_model
+          - apply_cc3_morph_controls
+          title: Tool Name
+        request_hash:
+          type: string
+          title: Request Hash
+        status:
+          type: string
+          const: completed
+          title: Status
+        mode:
+          type: string
+          const: blender
+          title: Mode
+        expected_scene_version:
+          type: integer
+          title: Expected Scene Version
+        scene_version:
+          type: integer
+          title: Scene Version
+        scope_component_ids:
+          items:
+            type: string
+          type: array
+          title: Scope Component Ids
+        dependency_component_ids:
+          items:
+            type: string
+          type: array
+          title: Dependency Component Ids
+        created_component_ids:
+          items:
+            type: string
+          type: array
+          title: Created Component Ids
+        updated_component_ids:
+          items:
+            type: string
+          type: array
+          title: Updated Component Ids
+        validation_results:
+          items:
+            $ref: '#/components/schemas/ModelingValidationResult'
+          type: array
+          title: Validation Results
+        summary:
+          type: string
+          title: Summary
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        rollback_checkpoint_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rollback Checkpoint Id
+      type: object
+      required:
+      - operation_id
+      - tool_name
+      - request_hash
+      - status
+      - mode
+      - expected_scene_version
+      - scene_version
+      - scope_component_ids
+      - dependency_component_ids
+      - created_component_ids
+      - updated_component_ids
+      - validation_results
+      - summary
+      - created_at
+      title: ModelingOperation
+    ModelingToolResponse:
+      properties:
+        operation:
+          $ref: '#/components/schemas/ModelingOperation'
+        project:
+          $ref: '#/components/schemas/Project'
+      type: object
+      required:
+      - operation
+      - project
+      title: ModelingToolResponse
+    ModelingValidationResult:
+      properties:
+        check_id:
+          type: string
+          title: Check Id
+        status:
+          type: string
+          enum:
+          - pass
+          - warn
+          - fail
+          - not_run
+          title: Status
+        summary:
+          type: string
+          title: Summary
+        affected_component_ids:
+          items:
+            type: string
+          type: array
+          title: Affected Component Ids
+      type: object
+      required:
+      - check_id
+      - status
+      - summary
+      - affected_component_ids
+      title: ModelingValidationResult
+    Phase:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        phase_key:
+          type: string
+          title: Phase Key
+        title:
+          type: string
+          title: Title
+        status:
+          type: string
+          enum:
+          - not_started
+          - queued
+          - running
+          - awaiting_review
+          - approved
+          - blocked
+          - failed
+          - cancelled
+          - skipped
+          title: Status
+          default: not_started
+        requires_approval:
+          type: boolean
+          title: Requires Approval
+          default: true
+        dependencies:
+          items:
+            type: string
+          type: array
+          title: Dependencies
+      type: object
+      required:
+      - phase_key
+      - title
+      title: Phase
+    PlanUpdateRequest:
+      properties:
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+        expected_plan_revision:
+          type: integer
+          minimum: 0.0
+          title: Expected Plan Revision
+        components:
+          items:
+            $ref: '#/components/schemas/EditablePlanComponent'
+          type: array
+          maxItems: 12
+          minItems: 1
+          title: Components
+      additionalProperties: false
+      type: object
+      required:
+      - expected_scene_version
+      - expected_plan_revision
+      - components
+      title: PlanUpdateRequest
+    Project:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        target_profile:
+          type: string
+          title: Target Profile
+        base_model_asset_id:
+          type: string
+          title: Base Model Asset Id
+        scene_version:
+          type: integer
+          title: Scene Version
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        phases:
+          items:
+            $ref: '#/components/schemas/Phase'
+          type: array
+          title: Phases
+        components:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Components
+        checkpoints:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Checkpoints
+        component_plan:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Component Plan
+        planning_metadata:
+          additionalProperties: true
+          type: object
+          title: Planning Metadata
+        references:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: References
+        messages:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Messages
+        operations:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Operations
+        draft_morphs:
+          additionalProperties:
+            type: number
+          type: object
+          title: Draft Morphs
+        draft_revision:
+          type: integer
+          title: Draft Revision
+        draft_appearance:
+          $ref: '#/components/schemas/DraftAppearanceUpdateRequest'
+        mode:
+          type: string
+          const: blender
+          title: Mode
+          default: blender
+      type: object
+      required:
+      - name
+      - target_profile
+      title: Project
+    ProjectCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        target_profile:
+          type: string
+          enum:
+          - static_render
+          - general_purpose
+          - game_asset
+          title: Target Profile
+          default: general_purpose
+      type: object
+      required:
+      - name
+      title: ProjectCreate
+    ProjectUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        target_profile:
+          anyOf:
+          - type: string
+            enum:
+            - static_render
+            - general_purpose
+            - game_asset
+          - type: 'null'
+          title: Target Profile
+      type: object
+      title: ProjectUpdate
+    ProjectSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        base_model_asset_id:
+          type: string
+          enum:
+          - character_cc3_morphs_v1
+          - character_cc3_male_morphs_v1
+          - character_cc5_rlcc3plus_all_morphs_v1
+          title: Base Model Asset Id
+        has_character:
+          type: boolean
+          title: Has Character
+      type: object
+      required:
+      - id
+      - name
+      - base_model_asset_id
+      - has_character
+      title: ProjectSummary
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

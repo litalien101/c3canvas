@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+app/__init__.py
+app/assets.py
+app/blender_adapter.py
+app/copilot.py
+app/main.py
+app/planning.py
+app/repository.py
+comodel_studio_api.egg-info/PKG-INFO
+comodel_studio_api.egg-info/SOURCES.txt
+comodel_studio_api.egg-info/dependency_links.txt
+comodel_studio_api.egg-info/requires.txt
+comodel_studio_api.egg-info/top_level.txt
+tests/test_api.py

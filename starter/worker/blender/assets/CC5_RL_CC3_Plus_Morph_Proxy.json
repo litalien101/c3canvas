@@ -1,0 +1,185 @@
+{
+  "format_version": 1,
+  "asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
+  "source_blend_sha256": "3208d052274575d2d1b65bfdb6316da1a31395e79a31eaec95fdef8659cc19f1",
+  "proxy_glb_filename": "CC5_RL_CC3_Plus_Morph_Proxy.glb",
+  "proxy_glb_sha256": "4fd5e30f500a128a19ddadf91182df5fb4a681fa903417997ffc25cb78a3ffea",
+  "proxy_glb_bytes": 10076204,
+  "morph_deltas_filename": "CC5_RL_CC3_Plus_Morph_Deltas.zip",
+  "morph_deltas_sha256": "aaccfa38594d7710d8eda59ee4aeae25ea1a6e50f58d7669effa84b6f0d1954b",
+  "morph_deltas_bytes": 210288566,
+  "mesh_names": [
+    "CC_Base_Body",
+    "CC_Base_Eye",
+    "CC_Base_EyeOcclusion",
+    "CC_Base_TearLine",
+    "CC_Base_Teeth",
+    "CC_Base_Tongue"
+  ],
+  "control_count": 2042,
+  "body_presets": [
+    {
+      "id": "female_neutral_body_preset_1",
+      "label": "Female Neutral Body Preset 1",
+      "source_fbx_sha256": "b1e807d57cfb358eb1caf244425382e5d432532b55f6a539e7665baa39ee4df6",
+      "delta_entry": "presets/female_neutral_body_preset_1.bin"
+    },
+    {
+      "id": "female_neutral_body_preset_2",
+      "label": "Female Neutral Body Preset 2",
+      "source_fbx_sha256": "15b37fc0040f8c214e2842970418819393f5100365ffd28db624262f0a6e612f",
+      "delta_entry": "presets/female_neutral_body_preset_2.bin"
+    },
+    {
+      "id": "female_neutral_body_preset_3",
+      "label": "Female Neutral Body Preset 3",
+      "source_fbx_sha256": "7056a3b8325662154012f957b7d6bce4e305c6009e3c8a484ac74ff9c6bb8c48",
+      "delta_entry": "presets/female_neutral_body_preset_3.bin"
+    },
+    {
+      "id": "female_neutral_body_preset_4",
+      "label": "Female Neutral Body Preset 4",
+      "source_fbx_sha256": "d06a245f25591be0b6d74f984cd42dd9c7543dff48fabc2def9c705368a09a3f",
+      "delta_entry": "presets/female_neutral_body_preset_4.bin"
+    },
+    {
+      "id": "female_neutral_body_preset_5",
+      "label": "Female Neutral Body Preset 5",
+      "source_fbx_sha256": "e9a69604b4e6cc2a0f96afbc3970ca7dc72ab43b30fca00eec769b1eb35b2c74",
+      "delta_entry": "presets/female_neutral_body_preset_5.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_1",
+      "label": "Female Neutral Head Preset 1",
+      "source_fbx_sha256": "e1946d34249419081fbf1513542d94abe56b0b3fff34e49fe9f4c02331ef037a",
+      "delta_entry": "presets/female_neutral_head_preset_1.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_2",
+      "label": "Female Neutral Head Preset 2",
+      "source_fbx_sha256": "da522f7d0ec814cb963ffbd7aa84ec21e5494888fe6b9b793a3b9d03b5b241f2",
+      "delta_entry": "presets/female_neutral_head_preset_2.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_3",
+      "label": "Female Neutral Head Preset 3",
+      "source_fbx_sha256": "d84ab06cae66711e344325037ba3d1086c203bb60e79aabf73b0bc11170eff0f",
+      "delta_entry": "presets/female_neutral_head_preset_3.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_4",
+      "label": "Female Neutral Head Preset 4",
+      "source_fbx_sha256": "e5470f8af59b797bf905162b99db1b8eb730017db86e762d3ff2f494ec6cbca2",
+      "delta_entry": "presets/female_neutral_head_preset_4.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_5",
+      "label": "Female Neutral Head Preset 5",
+      "source_fbx_sha256": "358d441c679ba7e81fc25fd6f19ab48e0032b40f918621525d8933e8cc4a15a1",
+      "delta_entry": "presets/female_neutral_head_preset_5.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_6",
+      "label": "Female Neutral Head Preset 6",
+      "source_fbx_sha256": "a35a3bb12e2ee41232dec456f2910c5c8e370bce6d820730d97e9425949e220b",
+      "delta_entry": "presets/female_neutral_head_preset_6.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_7",
+      "label": "Female Neutral Head Preset 7",
+      "source_fbx_sha256": "5ae4e017853c7359d401922472aba89fb44b4154492254a5711c9f984bfdfd26",
+      "delta_entry": "presets/female_neutral_head_preset_7.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_8",
+      "label": "Female Neutral Head Preset 8",
+      "source_fbx_sha256": "072a97f44156a847f1c162894479a6ed4a28f2c95127d916d55ee1eb20613e9f",
+      "delta_entry": "presets/female_neutral_head_preset_8.bin"
+    },
+    {
+      "id": "female_neutral_head_preset_9",
+      "label": "Female Neutral Head Preset 9",
+      "source_fbx_sha256": "e9434487df040c6708287b3acdb1a94a0144cb600bf1a2e8e7c4a24186e6ff1a",
+      "delta_entry": "presets/female_neutral_head_preset_9.bin"
+    },
+    {
+      "id": "male_neutral_body_preset_1",
+      "label": "Male Neutral Body Preset 1",
+      "source_fbx_sha256": "01d3d82aee0bb38e0c1d5b754163cc11fb646ee7aa360afd3455a5ae914207bc",
+      "delta_entry": "presets/male_neutral_body_preset_1.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_1",
+      "label": "Male Neutral Head Preset 1",
+      "source_fbx_sha256": "521d9732c003985c36afe3b259038eab4235f956d59af87a4860ae61a57ca804",
+      "delta_entry": "presets/male_neutral_head_preset_1.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_2",
+      "label": "Male Neutral Head Preset 2",
+      "source_fbx_sha256": "558be587eaaf26d074bcf63700de23f31df56e6db2e7d1edbcd3b4778d765d17",
+      "delta_entry": "presets/male_neutral_head_preset_2.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_3",
+      "label": "Male Neutral Head Preset 3",
+      "source_fbx_sha256": "c51542269a811c4598ae4bf3cd482c46f418e67c0bec4687099deec624a96b0c",
+      "delta_entry": "presets/male_neutral_head_preset_3.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_4",
+      "label": "Male Neutral Head Preset 4",
+      "source_fbx_sha256": "e8484af693ef064f86e7fd6534dc97bd9c97e89b4bde90f69268ff87adddff0e",
+      "delta_entry": "presets/male_neutral_head_preset_4.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_5",
+      "label": "Male Neutral Head Preset 5",
+      "source_fbx_sha256": "d1a6f4b0380cc630f9a08ae4b72e3b2bb9ce67ae6349764697fcc768c0a34407",
+      "delta_entry": "presets/male_neutral_head_preset_5.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_6",
+      "label": "Male Neutral Head Preset 6",
+      "source_fbx_sha256": "3a90d5a4734078d210a07f47fecfdaa7f02c61d0f6f9aca44ba72c75d53434b1",
+      "delta_entry": "presets/male_neutral_head_preset_6.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_7",
+      "label": "Male Neutral Head Preset 7",
+      "source_fbx_sha256": "252fd7bcd560ce09348e99ec64733b8fd0916f7d6cbbf315c3866e32acbb603c",
+      "delta_entry": "presets/male_neutral_head_preset_7.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_8",
+      "label": "Male Neutral Head Preset 8",
+      "source_fbx_sha256": "53d990183c8c9108de01bec5a5f130fa8a43d5508fdc2cc964f1852fb726bea9",
+      "delta_entry": "presets/male_neutral_head_preset_8.bin"
+    },
+    {
+      "id": "male_neutral_head_preset_9",
+      "label": "Male Neutral Head Preset 9",
+      "source_fbx_sha256": "559073c56adc3daf33d7c919966fb85c71e129f9d449d4163c5bbbc3fad4c852",
+      "delta_entry": "presets/male_neutral_head_preset_9.bin"
+    },
+    {
+      "id": "male_strong_body_preset_1",
+      "label": "Male Strong Body Preset 1",
+      "source_fbx_sha256": "0a21e646f320e42061ab15e7a16ed38ed53ca461a59ba81c30834b35b4f9426a",
+      "delta_entry": "presets/male_strong_body_preset_1.bin"
+    },
+    {
+      "id": "male_strong_body_preset_2",
+      "label": "Male Strong Body Preset 2",
+      "source_fbx_sha256": "c4a98c1277a24b7869b781337dfe005fe3105ea2fa4e450709374b947924036d",
+      "delta_entry": "presets/male_strong_body_preset_2.bin"
+    },
+    {
+      "id": "male_strong_body_preset_3",
+      "label": "Male Strong Body Preset 3",
+      "source_fbx_sha256": "4003f8883f03a9b57b91c7b4336a64f0656ef7b2143f74e6c0f8047bfcee4aa9",
+      "delta_entry": "presets/male_strong_body_preset_3.bin"
+    }
+  ],
+  "meshopt_compression": false
+}

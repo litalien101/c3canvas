@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/comodel/modeling-tool-call.schema.json",
+  "title": "Validated Modeling Tool Call",
+  "description": "Editing choices remain persisted browser draft data. Use import_base_model only for an explicitly user-approved final Save / Compile; eye selection is a draft preview, not a modeling tool.",
+  "type": "object",
+  "required": ["operation_id", "tool_name", "expected_scene_version", "scope_component_ids", "arguments"],
+  "properties": {
+    "operation_id": {"type": "string", "format": "uuid"},
+    "tool_name": {
+      "type": "string",
+      "enum": [
+        "import_base_model",
+        "apply_cc3_morph_controls",
+        "apply_cc3_body_preset",
+        "bake_cc3_morph_controls"
+      ]
+    },
+    "expected_scene_version": {"type": "integer", "minimum": 0},
+    "scope_component_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "dependency_component_ids": {"type": "array", "items": {"type": "string"}},
+    "arguments": {"type": "object"},
+    "reason": {"type": "string", "maxLength": 1000}
+  },
+  "additionalProperties": false
+}

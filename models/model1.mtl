@@ -1,0 +1,73 @@
+newmtl Std_Cornea_R
+    Ns 11.000000
+    d 0.800000
+    Ka 0.196078 0.196078 0.196078
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.000000 0.000000 0.000000
+    map_Kd mosel1/Std_Cornea_R_diffuse.jpg
+    map_Pm mosel1/Std_Cornea_R_metallic.jpg
+    map_Pr mosel1/Std_Cornea_R_roughness.jpg
+newmtl Std_Lower_Teeth
+    Ns 2.000000
+    d 1.000000
+    Ka 0.490196 0.490196 0.490196
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.900000 0.900000 0.900000
+    map_Kd mosel1/Std_Lower_Teeth_diffuse.jpg
+    map_Pm mosel1/Std_Lower_Teeth_metallic.jpg
+    map_Pr mosel1/Std_Lower_Teeth_roughness.jpg
+newmtl Std_Eye_L
+    Ns 20.000000
+    d 1.000000
+    Ka 0.196078 0.196078 0.196078
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.898039 0.898039 0.898039
+    map_Kd mosel1/Std_Eye_L_diffuse.jpg
+    map_Pm mosel1/Std_Eye_L_metallic.jpg
+    map_Pr mosel1/Std_Eye_L_roughness.jpg
+newmtl Std_Eye_R
+    Ns 20.000000
+    d 1.000000
+    Ka 0.196078 0.196078 0.196078
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.898039 0.898039 0.898039
+    map_Kd mosel1/Std_Eye_R_diffuse.jpg
+    map_Pm mosel1/Std_Eye_R_metallic.jpg
+    map_Pr mosel1/Std_Eye_R_roughness.jpg
+newmtl Std_Upper_Teeth
+    Ns 2.000000
+    d 1.000000
+    Ka 0.490196 0.490196 0.490196
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.900000 0.900000 0.900000
+    map_Kd mosel1/Std_Upper_Teeth_diffuse.jpg
+    map_Pm mosel1/Std_Upper_Teeth_metallic.jpg
+    map_Pr mosel1/Std_Upper_Teeth_roughness.jpg
+newmtl Std_Cornea_L
+    Ns 11.000000
+    d 0.800000
+    Ka 0.196078 0.196078 0.196078
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.000000 0.000000 0.000000
+    map_Kd mosel1/Std_Cornea_L_diffuse.jpg
+    map_Pm mosel1/Std_Cornea_L_metallic.jpg
+    map_Pr mosel1/Std_Cornea_L_roughness.jpg
+newmtl Ga_Skin_Body
+    Ns 2.000000
+    d 1.000000
+    Ka 0.996078 0.996078 0.996078
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.900000 0.900000 0.900000
+    map_Kd mosel1/Ga_Skin_Body_diffuse.png
+    map_Pm mosel1/Ga_Skin_Body_metallic.png
+    map_Pr mosel1/Ga_Skin_Body_roughness.png
+newmtl Ga_Eyelash
+    Ns 2.000000
+    d 1.000000
+    Ka 0.482353 0.482353 0.482353
+    Kd 1.000000 1.000000 1.000000
+    Ks 0.900000 0.900000 0.900000
+    map_Kd mosel1/Ga_Eyelash_diffuse.png
+    map_D mosel1/Ga_Eyelash_opacity.png
+    map_Pm mosel1/Ga_Eyelash_metallic.png
+    map_Pr mosel1/Ga_Eyelash_roughness.png
