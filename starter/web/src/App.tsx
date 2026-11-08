@@ -3,8 +3,22 @@ import { createPortal } from 'react-dom';
 import { Canvas, useThree } from '@react-three/fiber';
 import { ContactShadows, OrbitControls, OrthographicCamera, PerspectiveCamera, useProgress } from '@react-three/drei';
 import { MOUSE } from 'three';
-import { Activity, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Camera, ChevronDown, ChevronRight, CircleHelp, Crosshair, Download, Ear, Eye, EyeOff, Footprints, FolderOpen, GripVertical, Hand, Home, Info, Layers3, LockKeyhole, Maximize, Minimize, MoveVertical, Palette, Paperclip, PersonStanding, Play, Plus, RotateCcw, ScanFace, Search, Send, Settings, SlidersHorizontal, Sparkles, Star, Sun, Trash2, UserRound, Video, Waves, X, Zap, ZoomIn } from 'lucide-react';
-import { CC3ModelPreview, type CC3MorphControl, type CC3MorphControlSpec, type ModelPartKey } from './CC3ModelPreview';
+import { Activity, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Camera, ChevronDown, ChevronRight, Circle, CircleHelp, Crosshair, Download, Ear, Eye, EyeOff, Footprints, FolderOpen, GripVertical, Hand, Home, Info, Layers3, LockKeyhole, Maximize, Minimize, MoveVertical, Palette, Paperclip, PersonStanding, Play, Plus, RotateCcw, ScanFace, Search, Send, Settings, SlidersHorizontal, Sparkles, Star, Sun, Trash2, UserRound, Video, Waves, X, Zap, ZoomIn } from 'lucide-react';
+import { CC3ModelPreview, type CC3MorphControl, type CC3MorphControlSpec, type ModelPartKey, type SkinPaintStroke } from './CC3ModelPreview';
+import { applyElvenEarPreset, ELVEN_EAR_PRESET_MORPHS } from './characterMorphPresets';
+import { BODY_MORPH_GROUPS, bodyMorphGroupForControl, type BodyMorphGroupId } from './bodyMorphGroups';
+import { EAR_MORPH_GROUPS, earMorphGroupForControl, type EarMorphGroupId } from './earMorphGroups';
+import { HEAD_MORPH_GROUPS, headMorphGroupForControl, type HeadMorphGroupId } from './headMorphGroups';
+import { FACE_MORPH_GROUPS, faceMorphGroupForControl, type FaceMorphGroupId } from './faceMorphGroups';
+import { EYE_MORPH_GROUPS, eyeMorphGroupForControl, type EyeMorphGroupId } from './eyeMorphGroups';
+import { morphAreaForControl } from './morphAreas';
+import { isOtherMorphAreaId, OTHER_MORPH_GROUPS, otherMorphGroupForControl, type OtherMorphGroupId } from './otherMorphGroups';
+import {
+  applySkinDefinitionPatch,
+  DEFAULT_SKIN_DEFINITION,
+  type SkinDefinition,
+  type SkinDefinitionPatch,
+} from './semanticSkin';
 
 type ApiComponent = {
   id: string;
@@ -33,6 +47,12 @@ type AssistantProposal = {
   appearance_updates: Partial<{ eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null }>;
 };
 type AssistantGuidance = { target_id: string; title: string; message: string };
+type SkinInterpretation = {
+  patch: SkinDefinitionPatch;
+  preview: SkinDefinition;
+  changed_properties: string[];
+  explanation: string;
+};
 const landingCardIds = ['hero', 'assistant', 'new-projects', 'recent-projects', 'workflow'] as const;
 type LandingCardId = typeof landingCardIds[number];
 const defaultLandingCardOrder: LandingCardId[] = [...landingCardIds];
@@ -77,6 +97,9 @@ type ApiProject = {
   draft_morphs: Record<CC3MorphControl, number>;
   draft_revision: number;
   draft_appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null };
+  draft_skin_paint_strokes: SkinPaintStroke[];
+  draft_skin_definition: SkinDefinition;
+  draft_skin_revision: number;
   base_model_asset_id: ApiAssetId;
   mode: 'blender';
   components: ApiComponent[];
@@ -292,30 +315,104 @@ const MORPH_TYPE_FILTERS = [
   { id: 'shape', label: 'Shape' },
   { id: 'other', label: 'Other' },
 ] as const;
+const EAR_MORPH_GROUP_ICONS = {
+  tip: ArrowUp,
+  earlobe: Circle,
+  center: Crosshair,
+  rim: Activity,
+  'rim-details': Layers3,
+  inner: Waves,
+  angle: RotateCcw,
+  depth: MoveVertical,
+  width: ArrowRight,
+  height: MoveVertical,
+  size: Maximize,
+  shape: Ear,
+  other: CircleHelp,
+} satisfies Record<EarMorphGroupId, typeof Ear>;
+const BODY_MORPH_GROUP_ICONS = {
+  overall: PersonStanding,
+  neck: MoveVertical,
+  shoulders: Activity,
+  chest: Circle,
+  torso: Layers3,
+  hips: UserRound,
+  limbs: Footprints,
+  eyes: Eye,
+  tearline: Waves,
+  teeth: Sparkles,
+  face: ScanFace,
+  other: CircleHelp,
+} satisfies Record<BodyMorphGroupId, typeof Ear>;
+const HEAD_MORPH_GROUP_ICONS = {
+  overall: ScanFace,
+  skull: Circle,
+  forehead: MoveVertical,
+  proportions: Maximize,
+  orientation: RotateCcw,
+} satisfies Record<HeadMorphGroupId, typeof Ear>;
+const FACE_MORPH_GROUP_ICONS = {
+  'face-shape': ScanFace,
+  brows: Eye,
+  'shape-presets': Sparkles,
+} satisfies Record<FaceMorphGroupId, typeof Ear>;
+const EYE_MORPH_GROUP_ICONS = {
+  position: MoveVertical,
+  corners: Crosshair,
+  lids: Eye,
+  expression: Zap,
+  'lashes-upper': ArrowUp,
+  'lashes-lower': ArrowDown,
+  lashes: Activity,
+  'under-eye': Waves,
+  socket: Circle,
+  'iris-pupil': Circle,
+  'eye-shape': ScanFace,
+  'lid-presets': Sparkles,
+} satisfies Record<EyeMorphGroupId, typeof Ear>;
+const OTHER_MORPH_GROUP_ICONS = {
+  'nose--nostrils': Crosshair,
+  'nose--tip': ArrowUp,
+  'nose--shape': ScanFace,
+  'mouth--expression': Circle,
+  'mouth--lips': Waves,
+  'mouth--jaw': UserRound,
+  'mouth--cheeks': ScanFace,
+  'mouth--teeth': Sparkles,
+  'mouth--tongue': Waves,
+  'arms--upper-arm': Activity,
+  'arms--forearm': Activity,
+  'arms--elbow': Circle,
+  'arms--wrist': Circle,
+  'arms--general': PersonStanding,
+  'hands--fingers': Hand,
+  'hands--palm': Hand,
+  'hands--nails': Sparkles,
+  'hands--general': Hand,
+  'legs--thigh': Footprints,
+  'legs--knee': Circle,
+  'legs--lower-leg': Footprints,
+  'legs--ankle': Circle,
+  'legs--general': Footprints,
+  'feet--foot': Footprints,
+  'feet--toes': Footprints,
+  'feet--heel': Circle,
+  'feet--general': Footprints,
+  'misc--dental': Sparkles,
+  'misc--eyeball': Eye,
+  'misc--eye-orbit': Eye,
+  'misc--tearline': Waves,
+  'misc--numbered': CircleHelp,
+  'misc--body-pose': PersonStanding,
+  'misc--face-detail': ScanFace,
+  'misc--base-shape': Layers3,
+  'misc--other': CircleHelp,
+} satisfies Record<OtherMorphGroupId, typeof Ear>;
 type BodyAreaId = string;
 type MorphLibraryView = 'all' | 'favorites' | 'recent';
 type MorphTypeFilter = typeof MORPH_TYPE_FILTERS[number]['id'];
 
 type MorphControlIdentity = Pick<CC3MorphControlSpec, 'id' | 'label' | 'category'>;
-
-function morphAreaForControl(control: MorphControlIdentity): BodyAreaId {
-  const text = `${control.label} ${control.id}`.toLocaleLowerCase().replaceAll('_', ' ');
-  const rules: readonly [BodyAreaId, RegExp][] = [
-    ['eyes', /\b(eye|eyes|eyelid|eyelash|blink|iris|pupil|squint|gaze|tearline)\b/],
-    ['nose', /\b(nose|nostril|nasal|septum)\b/],
-    ['mouth', /\b(mouth|lip|lips|teeth|tooth|tongue|jaw|chin|smile|frown|sneer|pucker|funnel|viseme|phoneme|cheek|dimple)\b/],
-    ['ears', /\b(ear|ears|earlobe)\b/],
-    ['head', /\b(head|skull|cranium|forehead|temple)\b/],
-    ['face', /\b(face|brow|eyebrow|expression)\b/],
-    ['hands', /\b(hand|hands|finger|thumb|palm|fingernail|nail)\b/],
-    ['arms', /\b(arm|arms|bicep|tricep|forearm|elbow|wrist|clavicle)\b/],
-    ['feet', /\b(foot|feet|toe|toes|heel|instep)\b/],
-    ['legs', /\b(leg|legs|thigh|knee|calf|calves|shin|ankle)\b/],
-    ['tail', /\btail\b/],
-    ['body', /\b(body|height|width|scale|waist|hip|torso|chest|abdomen|muscle|fat|physique|shoulder|neck|back|belly|rib|breast|bust|weight|build)\b/],
-  ];
-  return rules.find(([, pattern]) => pattern.test(text))?.[0] ?? 'misc';
-}
 
 function morphTypeForControl(control: MorphControlIdentity): Exclude<MorphTypeFilter, 'all'> {
   const text = `${control.label} ${control.id}`.toLocaleLowerCase().replaceAll('_', ' ');
@@ -486,6 +583,17 @@ export default function App() {
   const [skinAssetsLoading, setSkinAssetsLoading] = useState(true);
   const [skinAssetsError, setSkinAssetsError] = useState('');
   const [skinPreviewError, setSkinPreviewError] = useState('');
+  const [skinPaintEnabled, setSkinPaintEnabled] = useState(false);
+  const [skinPaintColor, setSkinPaintColor] = useState('#c84051');
+  const [skinPaintTool, setSkinPaintTool] = useState<'paint' | 'erase'>('paint');
+  const [skinPaintSize, setSkinPaintSize] = useState(28);
+  const [skinPaintOpacity, setSkinPaintOpacity] = useState(75);
+  const [skinDefinitionDraft, setSkinDefinitionDraft] = useState<SkinDefinition>(DEFAULT_SKIN_DEFINITION);
+  const [skinPrompt, setSkinPrompt] = useState('');
+  const [skinInterpretation, setSkinInterpretation] = useState<SkinInterpretation | null>(null);
+  const [skinInterpretationLoading, setSkinInterpretationLoading] = useState(false);
+  const [skinInterpretationError, setSkinInterpretationError] = useState('');
+  const [skinDefinitionSaving, setSkinDefinitionSaving] = useState(false);
   const onSkinPreviewError = useCallback((error: string) => setSkinPreviewError(error), []);
   const [baseModelsLoading, setBaseModelsLoading] = useState(true);
   const [baseModelsError, setBaseModelsError] = useState('');
@@ -524,6 +632,12 @@ export default function App() {
   const [morphPreviewEnabled, setMorphPreviewEnabled] = useState(false);
   const [morphInteractionActive, setMorphInteractionActive] = useState(false);
   const [selectedBodyArea, setSelectedBodyArea] = useState<BodyAreaId>('body');
+  const [selectedBodyMorphGroupId, setSelectedBodyMorphGroupId] = useState<BodyMorphGroupId | null>(null);
+  const [selectedEarMorphGroupId, setSelectedEarMorphGroupId] = useState<EarMorphGroupId | null>(null);
+  const [selectedHeadMorphGroupId, setSelectedHeadMorphGroupId] = useState<HeadMorphGroupId | null>(null);
+  const [selectedFaceMorphGroupId, setSelectedFaceMorphGroupId] = useState<FaceMorphGroupId | null>(null);
+  const [selectedEyeMorphGroupId, setSelectedEyeMorphGroupId] = useState<EyeMorphGroupId | null>(null);
+  const [selectedOtherMorphGroupId, setSelectedOtherMorphGroupId] = useState<OtherMorphGroupId | null>(null);
   const [morphMode, setMorphMode] = useState<'basic' | 'advanced'>('basic');
   const [morphSearch, setMorphSearch] = useState('');
   const [morphLibraryView, setMorphLibraryView] = useState<MorphLibraryView>('all');
@@ -631,18 +745,100 @@ export default function App() {
       }));
   }, [bodyPresets.length, visibleControls]);
   const activeBodyArea = morphAreas.find(({ id }) => id === selectedBodyArea) ?? morphAreas[0];
+  const activeBodyMorphGroup = BODY_MORPH_GROUPS.find(({ id }) => id === selectedBodyMorphGroupId) ?? null;
+  const activeEarMorphGroup = EAR_MORPH_GROUPS.find(({ id }) => id === selectedEarMorphGroupId) ?? null;
+  const activeHeadMorphGroup = HEAD_MORPH_GROUPS.find(({ id }) => id === selectedHeadMorphGroupId) ?? null;
+  const activeFaceMorphGroup = FACE_MORPH_GROUPS.find(({ id }) => id === selectedFaceMorphGroupId) ?? null;
+  const activeEyeMorphGroup = EYE_MORPH_GROUPS.find(({ id }) => id === selectedEyeMorphGroupId) ?? null;
+  const activeOtherMorphGroup = isOtherMorphAreaId(activeBodyArea?.id)
+    ? OTHER_MORPH_GROUPS[activeBodyArea.id].find(({ id }) => id === selectedOtherMorphGroupId) ?? null
+    : null;
+  const isBodyMorphRoot = activeBodyArea?.id === 'body' && activeBodyMorphGroup === null && !morphSearch.trim();
+  const isEarMorphRoot = activeBodyArea?.id === 'ears' && activeEarMorphGroup === null && !morphSearch.trim();
+  const isHeadMorphRoot = activeBodyArea?.id === 'head' && activeHeadMorphGroup === null && !morphSearch.trim();
+  const isFaceMorphRoot = activeBodyArea?.id === 'face' && activeFaceMorphGroup === null && !morphSearch.trim();
+  const isEyeMorphRoot = activeBodyArea?.id === 'eyes' && activeEyeMorphGroup === null && !morphSearch.trim();
+  const isOtherMorphRoot = isOtherMorphAreaId(activeBodyArea?.id) && activeOtherMorphGroup === null && !morphSearch.trim();
   const bodyAreaControls = useMemo(
-    () => visibleControls.filter((control) => morphAreaForControl(control) === activeBodyArea?.id),
-    [activeBodyArea?.id, visibleControls],
+    () => visibleControls.filter((control) => (
+      morphAreaForControl(control) === activeBodyArea?.id
+      && (activeBodyArea?.id !== 'body'
+        || selectedBodyMorphGroupId === null
+        || bodyMorphGroupForControl(control) === selectedBodyMorphGroupId)
+      && (activeBodyArea?.id !== 'ears'
+        || selectedEarMorphGroupId === null
+        || earMorphGroupForControl(control) === selectedEarMorphGroupId)
+      && (activeBodyArea?.id !== 'head'
+        || selectedHeadMorphGroupId === null
+        || headMorphGroupForControl(control) === selectedHeadMorphGroupId)
+      && (activeBodyArea?.id !== 'face'
+        || selectedFaceMorphGroupId === null
+        || faceMorphGroupForControl(control) === selectedFaceMorphGroupId)
+      && (activeBodyArea?.id !== 'eyes'
+        || selectedEyeMorphGroupId === null
+        || eyeMorphGroupForControl(control) === selectedEyeMorphGroupId)
+      && (!isOtherMorphAreaId(activeBodyArea?.id)
+        || selectedOtherMorphGroupId === null
+        || otherMorphGroupForControl(activeBodyArea.id, control) === selectedOtherMorphGroupId)
+    )),
+    [activeBodyArea?.id, selectedBodyMorphGroupId, selectedEarMorphGroupId, selectedHeadMorphGroupId, selectedFaceMorphGroupId, selectedEyeMorphGroupId, selectedOtherMorphGroupId, visibleControls],
   );
+  const elvenEarPresetAvailable = isCc5FullMorphAsset
+    && Object.keys(ELVEN_EAR_PRESET_MORPHS).every((id) => controls.some((control) => control.id === id));
+  const elvenEarPresetApplied = elvenEarPresetAvailable
+    && Object.entries(ELVEN_EAR_PRESET_MORPHS).every(([id, value]) => (morphs[id] ?? 0) === value);
   const morphLibraryScopeControls = useMemo(() => {
     const query = morphSearch.trim().toLocaleLowerCase();
-    return visibleControls.filter(({ id, label, category }) => {
-      if (!query && morphAreaForControl({ id, label, category }) !== activeBodyArea?.id) return false;
+    return visibleControls.filter((control) => {
+      const { id, label, category } = control;
+      if (!query && morphAreaForControl(control) !== activeBodyArea?.id) return false;
+      if (
+        !query
+        && activeBodyArea?.id === 'body'
+        && selectedBodyMorphGroupId !== null
+        && bodyMorphGroupForControl(control) !== selectedBodyMorphGroupId
+      ) return false;
+      if (
+        !query
+        && activeBodyArea?.id === 'ears'
+        && selectedEarMorphGroupId !== null
+        && earMorphGroupForControl(control) !== selectedEarMorphGroupId
+      ) return false;
+      if (
+        !query
+        && activeBodyArea?.id === 'head'
+        && selectedHeadMorphGroupId !== null
+        && headMorphGroupForControl(control) !== selectedHeadMorphGroupId
+      ) return false;
+      if (
+        !query
+        && activeBodyArea?.id === 'face'
+        && selectedFaceMorphGroupId !== null
+        && faceMorphGroupForControl(control) !== selectedFaceMorphGroupId
+      ) return false;
+      if (
+        !query
+        && activeBodyArea?.id === 'eyes'
+        && selectedEyeMorphGroupId !== null
+        && eyeMorphGroupForControl(control) !== selectedEyeMorphGroupId
+      ) return false;
+      if (
+        !query
+        && isOtherMorphAreaId(activeBodyArea?.id)
+        && selectedOtherMorphGroupId !== null
+        && otherMorphGroupForControl(activeBodyArea.id, control) !== selectedOtherMorphGroupId
+      ) return false;
       if (morphTypeFilter !== 'all' && morphTypeForControl({ id, label, category }) !== morphTypeFilter) return false;
-      return !query || `${label} ${category} ${id}`.toLocaleLowerCase().includes(query);
+      const searchText = [
+        label,
+        category,
+        id,
+        control.positive_shape_key,
+        control.negative_shape_key,
+      ].filter(Boolean).join(' ').toLocaleLowerCase();
+      return !query || searchText.includes(query);
     });
-  }, [activeBodyArea?.id, morphSearch, morphTypeFilter, visibleControls]);
+  }, [activeBodyArea?.id, morphSearch, morphTypeFilter, selectedBodyMorphGroupId, selectedEarMorphGroupId, selectedHeadMorphGroupId, selectedFaceMorphGroupId, selectedEyeMorphGroupId, selectedOtherMorphGroupId, visibleControls]);
   const visibleLibraryControls = useMemo(
     () => morphLibraryScopeControls.filter(({ id }) => (
       morphLibraryView === 'favorites'
@@ -656,11 +852,80 @@ export default function App() {
     favorites: morphLibraryScopeControls.filter(({ id }) => favoriteMorphIds.includes(id)).length,
     recent: morphLibraryScopeControls.filter(({ id }) => recentMorphIds.includes(id)).length,
   }), [favoriteMorphIds, morphLibraryScopeControls, recentMorphIds]);
+  const visibleBodyMorphGroups = useMemo(() => {
+    const counts = new Map<BodyMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== 'body') continue;
+      const groupId = bodyMorphGroupForControl(control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return BODY_MORPH_GROUPS
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [visibleLibraryControls]);
+  const visibleEarMorphGroups = useMemo(() => {
+    const counts = new Map<EarMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== 'ears') continue;
+      const groupId = earMorphGroupForControl(control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return EAR_MORPH_GROUPS
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [visibleLibraryControls]);
+  const visibleHeadMorphGroups = useMemo(() => {
+    const counts = new Map<HeadMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== 'head') continue;
+      const groupId = headMorphGroupForControl(control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return HEAD_MORPH_GROUPS
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [visibleLibraryControls]);
+  const visibleFaceMorphGroups = useMemo(() => {
+    const counts = new Map<FaceMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== 'face') continue;
+      const groupId = faceMorphGroupForControl(control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return FACE_MORPH_GROUPS
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [visibleLibraryControls]);
+  const visibleEyeMorphGroups = useMemo(() => {
+    const counts = new Map<EyeMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== 'eyes') continue;
+      const groupId = eyeMorphGroupForControl(control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return EYE_MORPH_GROUPS
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [visibleLibraryControls]);
+  const visibleOtherMorphGroups = useMemo(() => {
+    if (!isOtherMorphAreaId(activeBodyArea?.id)) return [];
+    const counts = new Map<OtherMorphGroupId, number>();
+    for (const control of visibleLibraryControls) {
+      if (morphAreaForControl(control) !== activeBodyArea.id) continue;
+      const groupId = otherMorphGroupForControl(activeBodyArea.id, control);
+      counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return OTHER_MORPH_GROUPS[activeBodyArea.id]
+      .filter(({ id }) => (counts.get(id) ?? 0) > 0)
+      .map((group) => ({ ...group, count: counts.get(group.id) ?? 0 }));
+  }, [activeBodyArea?.id, visibleLibraryControls]);
   const displayedLibraryControls = morphMode === 'basic'
     ? visibleLibraryControls.slice(0, 12)
     : visibleLibraryControls;
-  const selectedMorph = displayedLibraryControls.find(({ id }) => id === selectedMorphId)
-    ?? displayedLibraryControls[0];
+  const selectedMorph = isBodyMorphRoot || isEarMorphRoot || isHeadMorphRoot || isFaceMorphRoot || isEyeMorphRoot || isOtherMorphRoot
+    ? undefined
+    : displayedLibraryControls.find(({ id }) => id === selectedMorphId)
+      ?? displayedLibraryControls[0];
   const relatedMorphs = useMemo(() => {
     if (!selectedMorph) return [];
     const terms = selectedMorph.label.toLocaleLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2);
@@ -779,6 +1044,11 @@ export default function App() {
       ])),
     }
     : null, [project?.base_model_asset_id, selectedDraftSkin]);
+  const skinPaintStrokes = project?.draft_skin_paint_strokes ?? [];
+  const savedSkinDefinition = project?.draft_skin_definition ?? DEFAULT_SKIN_DEFINITION;
+  const skinDefinitionDirty = Boolean(project)
+    && JSON.stringify(skinDefinitionDraft) !== JSON.stringify(savedSkinDefinition);
+  const skinDefinitionPreview = skinInterpretation?.preview ?? skinDefinitionDraft;
   const visibleParts = useMemo(
     () => Object.fromEntries(Object.entries(parts).map(([key, part]) => [key, part.visible])) as Record<ModelPartKey, boolean>,
     [parts],
@@ -973,6 +1243,20 @@ export default function App() {
       ? current.filter((favoriteId) => favoriteId !== id)
       : [...current, id]);
   }, []);
+  const selectMorphControl = (control: MorphControlIdentity) => {
+    if (morphSearch.trim()) {
+      const area = morphAreaForControl(control);
+      setSelectedBodyArea(area);
+      setSelectedBodyMorphGroupId(area === 'body' ? bodyMorphGroupForControl(control) : null);
+      setSelectedEarMorphGroupId(area === 'ears' ? earMorphGroupForControl(control) : null);
+      setSelectedHeadMorphGroupId(area === 'head' ? headMorphGroupForControl(control) : null);
+      setSelectedFaceMorphGroupId(area === 'face' ? faceMorphGroupForControl(control) : null);
+      setSelectedEyeMorphGroupId(area === 'eyes' ? eyeMorphGroupForControl(control) : null);
+      setSelectedOtherMorphGroupId(isOtherMorphAreaId(area) ? otherMorphGroupForControl(area, control) : null);
+      setMorphSearch('');
+    }
+    setSelectedMorphId(control.id);
+  };
   const resetMorphs = () => {
     setMorphs(Object.fromEntries(controls.map(({ id }) => [id, 0])));
   };
@@ -986,6 +1270,22 @@ export default function App() {
   };
   const resetSelectedMorph = () => {
     if (selectedMorph) updateMorph(selectedMorph.id, 0);
+  };
+  const applyElvenEarPresetToDraft = () => {
+    if (!elvenEarPresetAvailable || morphControlsDisabled || running) return;
+    setMorphs((current) => applyElvenEarPreset(current));
+    setSelectedBodyArea('ears');
+    setSelectedBodyMorphGroupId(null);
+    setSelectedEarMorphGroupId('tip');
+    setMorphSearch('');
+    setMorphLibraryView('all');
+    setMorphTypeFilter('all');
+    setSelectedMorphId('2019-08-25-17-39-45_ear pointed');
+    setRecentMorphIds((current) => [
+      ...Object.keys(ELVEN_EAR_PRESET_MORPHS).filter((id) => !current.includes(id)),
+      ...current,
+    ].slice(0, 12));
+    setMorphPreviewEnabled(true);
   };
   useEffect(() => {
     if (!newProjectOpen) return;
@@ -1162,6 +1462,11 @@ export default function App() {
   }, []);
 
   function applyProject(next: ApiProject, resetCamera = true) {
+    const changingProject = activeProjectId.current !== next.id;
+    const changingSkin = project?.draft_appearance?.skin_asset_id !== next.draft_appearance?.skin_asset_id;
+    const preserveLocalSkinDraft = !changingProject
+      && project?.draft_skin_revision === next.draft_skin_revision
+      && JSON.stringify(skinDefinitionDraft) !== JSON.stringify(project?.draft_skin_definition ?? DEFAULT_SKIN_DEFINITION);
     const assetComponent = next.components.find((item) => item.source_asset?.asset_id);
     const selectedAssetId = next.base_model_asset_id
       ?? assetComponent?.source_asset?.asset_id;
@@ -1176,6 +1481,15 @@ export default function App() {
       );
     const preserveLocalPreset = !next.draft_appearance && preserveLocalDraft && savedPresetId === null && activeBodyPresetId !== null;
     setProject(next);
+    if (!preserveLocalSkinDraft) setSkinDefinitionDraft(next.draft_skin_definition ?? DEFAULT_SKIN_DEFINITION);
+    if (changingProject) {
+      setSkinPrompt('');
+    }
+    if (changingProject || changingSkin) {
+      setSkinInterpretation(null);
+      setSkinInterpretationError('');
+    }
+    if (changingProject || assetComponent) setSkinPaintEnabled(false);
     setProjectName(next.name);
     setActiveBodyPresetId(preserveLocalPreset ? activeBodyPresetId : savedPresetId);
     if (!preserveLocalDraft) {
@@ -1291,6 +1605,7 @@ export default function App() {
   }, [availableBaseModels, baseModelsError, baseModelsLoading, body?.source_asset?.morph_control_specs, hasActiveProject, morphControlsAssetId, morphControlsByAsset, selectedBaseModel]);
 
   function openNewProject() {
+    if (skinDefinitionDirty || skinDefinitionSaving) return;
     setSavedProjectsOpen(false);
     setProjectCreationError('');
     setSelectedBaseModel(null);
@@ -1386,7 +1701,7 @@ export default function App() {
   }
 
   function returnToWelcome() {
-    if (running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty) return;
+    if (running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty || skinDefinitionDirty || skinDefinitionSaving) return;
     setProject(null);
     setSelectedBaseModel(null);
     setSavedProjectsOpen(false);
@@ -1395,6 +1710,9 @@ export default function App() {
   }
 
   async function openProject(id: string) {
+    if (skinDefinitionDirty || skinDefinitionSaving) {
+      throw new Error('Save skin property changes before opening another project.');
+    }
     if (!id) return;
     const loaded = await requestJson<ApiProject>(`/projects/${id}`);
     applyProject(loaded);
@@ -1441,6 +1759,10 @@ export default function App() {
               ? projectToImport.draft_appearance.body_preset_id
               : activeBodyPresetId,
             skin_asset_id: projectToImport.draft_appearance?.skin_asset_id ?? null,
+            skin_paint_strokes: projectToImport.draft_skin_paint_strokes ?? [],
+            ...(projectToImport.draft_appearance?.skin_asset_id
+              ? { skin_definition: projectToImport.draft_skin_definition }
+              : {}),
           },
         }),
       });
@@ -1484,6 +1806,7 @@ export default function App() {
 
   async function updateDraftAppearance(
     appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null },
+    paintStrokes?: SkinPaintStroke[],
   ) {
     if (appearanceSaveInProgress.current) throw new Error('Wait for the current appearance change to finish saving.');
     appearanceSaveInProgress.current = true;
@@ -1493,7 +1816,10 @@ export default function App() {
       if (hasCharacter) throw new Error('Compiled projects cannot change draft appearance. Start a new draft to preview different assets.');
       const saved = await requestJson<ApiProject>(`/projects/${project.id}/draft-appearance`, {
         method: 'PATCH',
-        body: JSON.stringify(appearance),
+        body: JSON.stringify({
+          ...appearance,
+          ...(paintStrokes === undefined ? {} : { skin_paint_strokes: paintStrokes }),
+        }),
       });
       applyProject(saved, false);
       setSavedProjects((projects) => [summarizeProject(saved), ...projects.filter((item) => item.id !== saved.id)]);
@@ -1512,6 +1838,61 @@ export default function App() {
     await updateDraftAppearance({ ...appearance, eye_asset_id: assetId });
   }
 
+  function updateSkinDefinition(patch: SkinDefinitionPatch) {
+    setSkinDefinitionDraft((current) => applySkinDefinitionPatch(current, patch));
+    setSkinInterpretation(null);
+    setSkinInterpretationError('');
+  }
+
+  async function saveSkinDefinition(definition: SkinDefinition) {
+    if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before editing its properties.');
+    if (hasCharacter) throw new Error('Skin properties can only be changed before compilation.');
+    if (skinDefinitionSaving) throw new Error('Wait for the current skin update to finish saving.');
+    if (JSON.stringify(definition) === JSON.stringify(project.draft_skin_definition)) {
+      setSkinDefinitionDraft(definition);
+      return;
+    }
+    setSkinDefinitionSaving(true);
+    try {
+      const saved = await requestJson<ApiProject>(`/projects/${project.id}/draft-skin`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          expected_draft_skin_revision: project.draft_skin_revision,
+          skin_definition: definition,
+        }),
+      });
+      applyProject(saved, false);
+      setSavedProjects((projects) => [summarizeProject(saved), ...projects.filter((item) => item.id !== saved.id)]);
+      setSkinInterpretation(null);
+    } finally {
+      setSkinDefinitionSaving(false);
+    }
+  }
+
+  async function interpretSkinPrompt() {
+    if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before asking for a skin interpretation.');
+    setSkinInterpretationLoading(true);
+    setSkinInterpretationError('');
+    setSkinInterpretation(null);
+    try {
+      const interpretation = await requestJson<SkinInterpretation>(`/projects/${project.id}/skin/interpret`, {
+        method: 'POST',
+        body: JSON.stringify({ prompt: skinPrompt }),
+      });
+      setSkinInterpretation(interpretation);
+    } catch (error) {
+      setSkinInterpretationError(error instanceof Error ? error.message : 'The skin request could not be interpreted.');
+      throw error;
+    } finally {
+      setSkinInterpretationLoading(false);
+    }
+  }
+
+  async function applySkinInterpretation() {
+    if (!skinInterpretation) throw new Error('Ask for a skin interpretation before applying it.');
+    await saveSkinDefinition(skinInterpretation.preview);
+  }
+
   async function selectDraftPreset(presetId: string | null) {
     const appearance = project?.draft_appearance ?? { eye_asset_id: null, body_preset_id: null, skin_asset_id: null };
     await updateDraftAppearance({ ...appearance, body_preset_id: presetId });
@@ -1524,7 +1905,29 @@ export default function App() {
       body_preset_id: activeBodyPresetId,
       skin_asset_id: null,
     };
-    await updateDraftAppearance({ ...appearance, skin_asset_id: assetId });
+    await updateDraftAppearance(
+      { ...appearance, skin_asset_id: assetId },
+      assetId === selectedDraftSkin?.id ? undefined : [],
+    );
+  }
+
+  async function appendSkinPaintStrokes(strokes: SkinPaintStroke[]) {
+    if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before painting.');
+    if (hasCharacter) throw new Error('Skin painting is available only in a draft before compilation.');
+    const savedStrokes = project.draft_skin_paint_strokes ?? [];
+    if (savedStrokes.length + strokes.length > 500) {
+      throw new Error('This draft has reached the 500-stroke limit. Undo or clear strokes before painting more.');
+    }
+    if ([...savedStrokes, ...strokes].reduce((total, stroke) => total + stroke.points.length, 0) > 20_000) {
+      throw new Error('This draft has reached the 20,000-point paint limit. Undo or clear strokes before painting more.');
+    }
+    await updateDraftAppearance(project.draft_appearance, [...savedStrokes, ...strokes]);
+  }
+
+  async function saveSkinPaintStrokes(strokes: SkinPaintStroke[]) {
+    if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before editing paint strokes.');
+    if (hasCharacter) throw new Error('Skin painting is available only in a draft before compilation.');
+    await updateDraftAppearance(project.draft_appearance, strokes);
   }
 
   async function bakeMorphs() {
@@ -1596,7 +1999,14 @@ export default function App() {
       setStudioSection('models');
       setCustomizationCategory('body');
       if (control) {
-        setSelectedBodyArea(morphAreaForControl(control));
+        const area = morphAreaForControl(control);
+        setSelectedBodyArea(area);
+        setSelectedBodyMorphGroupId(area === 'body' ? bodyMorphGroupForControl(control) : null);
+        setSelectedEarMorphGroupId(area === 'ears' ? earMorphGroupForControl(control) : null);
+        setSelectedHeadMorphGroupId(area === 'head' ? headMorphGroupForControl(control) : null);
+        setSelectedFaceMorphGroupId(area === 'face' ? faceMorphGroupForControl(control) : null);
+        setSelectedEyeMorphGroupId(area === 'eyes' ? eyeMorphGroupForControl(control) : null);
+        setSelectedOtherMorphGroupId(isOtherMorphAreaId(area) ? otherMorphGroupForControl(area, control) : null);
         setMorphMode('advanced');
         setMorphLibraryView('all');
         setMorphTypeFilter('all');
@@ -1614,6 +2024,12 @@ export default function App() {
       setStudioSection('models');
       setCustomizationCategory('body');
       setSelectedBodyArea('presets');
+      setSelectedBodyMorphGroupId(null);
+      setSelectedEarMorphGroupId(null);
+      setSelectedHeadMorphGroupId(null);
+      setSelectedFaceMorphGroupId(null);
+      setSelectedEyeMorphGroupId(null);
+      setSelectedOtherMorphGroupId(null);
       setMorphSearch('');
       setMorphLibraryView('all');
       setMorphTypeFilter('all');
@@ -1636,10 +2052,23 @@ export default function App() {
       const firstBodyControl = visibleControls.find((control) => morphAreaForControl(control) === 'body')
         ?? visibleControls[0];
       if (firstBodyControl) {
-        setSelectedBodyArea(morphAreaForControl(firstBodyControl));
+        const area = morphAreaForControl(firstBodyControl);
+        setSelectedBodyArea(area);
+        setSelectedBodyMorphGroupId(area === 'body' ? bodyMorphGroupForControl(firstBodyControl) : null);
+        setSelectedEarMorphGroupId(area === 'ears' ? earMorphGroupForControl(firstBodyControl) : null);
+        setSelectedHeadMorphGroupId(area === 'head' ? headMorphGroupForControl(firstBodyControl) : null);
+        setSelectedFaceMorphGroupId(area === 'face' ? faceMorphGroupForControl(firstBodyControl) : null);
+        setSelectedEyeMorphGroupId(area === 'eyes' ? eyeMorphGroupForControl(firstBodyControl) : null);
+        setSelectedOtherMorphGroupId(isOtherMorphAreaId(area) ? otherMorphGroupForControl(area, firstBodyControl) : null);
         setSelectedMorphId(firstBodyControl.id);
       } else {
         setSelectedBodyArea('body');
+        setSelectedBodyMorphGroupId(null);
+        setSelectedEarMorphGroupId(null);
+        setSelectedHeadMorphGroupId(null);
+        setSelectedFaceMorphGroupId(null);
+        setSelectedEyeMorphGroupId(null);
+        setSelectedOtherMorphGroupId(null);
         setSelectedMorphId(null);
       }
     } else {
@@ -2163,7 +2592,7 @@ export default function App() {
             disabled={running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty}
             onClick={returnToWelcome}
           ><Home size={18} /></button>
-          <button className="project-icon-button" type="button" aria-label="New project" title="New project" disabled={!apiReady || running} onClick={openNewProject}><Plus size={19} /></button>
+          <button className="project-icon-button" type="button" aria-label="New project" title="New project" disabled={!apiReady || running || skinDefinitionDirty || skinDefinitionSaving} onClick={openNewProject}><Plus size={19} /></button>
           <div className="saved-project-picker">
             <button
               className="project-icon-button"
@@ -2172,7 +2601,7 @@ export default function App() {
               title="Open project"
               aria-expanded={savedProjectsOpen}
               aria-controls="saved-project-list"
-              disabled={!apiReady || (otherSavedProjects.length === 0 && !savedProjectsLoading && !savedProjectsError) || running}
+              disabled={!apiReady || (otherSavedProjects.length === 0 && !savedProjectsLoading && !savedProjectsError) || running || skinDefinitionDirty || skinDefinitionSaving}
               onClick={() => setSavedProjectsOpen((open) => !open)}
             ><FolderOpen size={18} /></button>
             {savedProjectsOpen && <div className="saved-project-list" id="saved-project-list" aria-label="Open saved project">
@@ -2187,6 +2616,7 @@ export default function App() {
                   <button
                     type="button"
                     className="saved-project-open"
+                    disabled={skinDefinitionDirty || skinDefinitionSaving}
                     onClick={() => { setSavedProjectsOpen(false); void runAction(() => openProject(item.id)); }}
                   >
                     <FolderOpen size={15} />
@@ -2197,7 +2627,7 @@ export default function App() {
                     className="saved-project-delete"
                     aria-label={`Delete ${item.name}`}
                     title={`Delete ${item.name}`}
-                    disabled={running}
+                    disabled={running || skinDefinitionDirty || skinDefinitionSaving}
                     onClick={() => void runAction(() => deleteProject(item.id, item.name))}
                   ><Trash2 size={15} /></button>
                 </div>;
@@ -2212,7 +2642,7 @@ export default function App() {
           <button
             className="export-button"
             type="button"
-            disabled={!project || hasCharacter || referencePlan?.status !== 'approved' || !blenderAvailable || running || draftSaveStatus !== 'saved' || morphsDirty}
+            disabled={!project || hasCharacter || referencePlan?.status !== 'approved' || !blenderAvailable || running || appearanceSaving || skinDefinitionSaving || skinDefinitionDirty || draftSaveStatus !== 'saved' || morphsDirty}
             title={hasCharacter ? 'This project has already been compiled.' : 'Compile the saved browser draft in Blender.'}
             onClick={() => void runAction(buildEditableCharacter)}
           ><Download size={18} />{importingCharacter ? 'Compiling…' : hasCharacter ? 'Compiled' : 'Save / Compile'}</button>
@@ -2224,7 +2654,7 @@ export default function App() {
         ref={workspaceRef}
         style={{ '--character-dock-width': `${characterDockWidth}px` } as CSSProperties}
       >
-        <section className="viewport-area" aria-label="3D workspace">
+        <section className={`viewport-area${skinPaintEnabled ? ' is-skin-painting' : ''}`} aria-label="3D workspace">
           <div className="canvas-wrap" ref={viewportRef}>
             <PreviewErrorBoundary resetKey={displayPreviewUrl ?? 'no-preview'}>
             <Canvas shadows dpr={[1, 1.25]} frameloop="demand" gl={{ antialias: true }}>
@@ -2254,6 +2684,7 @@ export default function App() {
                 previewUrl={displayPreviewUrl}
                 eyePreviewUrl={eyePreviewUrl}
                 skinPreview={skinPreview}
+                skinDefinition={skinDefinitionPreview}
                 morphPreviewUrl={morphPreviewUrl}
                 morphDeltaBaseUrl={morphDeltaBaseUrl}
                 morphDeltaSha256={morphDeltaSha256}
@@ -2264,12 +2695,20 @@ export default function App() {
                 controls={clientMorphControls}
                 onClientMorphPreviewState={onClientMorphPreviewState}
                 onSkinPreviewError={onSkinPreviewError}
+                skinPaintEnabled={skinPaintEnabled && !appearanceSaving && !hasCharacter}
+                skinPaintColor={skinPaintColor}
+                skinPaintTool={skinPaintTool}
+                skinPaintSize={skinPaintSize}
+                skinPaintOpacity={skinPaintOpacity}
+                skinPaintStrokes={skinPaintStrokes}
+                onSkinPaintStrokes={(strokes) => void runAction(() => appendSkinPaintStrokes(strokes))}
               />}
               <StudioBackdrop />
               <ContactShadows position={[0, 0.02, 0]} opacity={0.24} scale={5} blur={2.3} far={3} />
               <OrbitControls
                 key={`controls-${cameraKey}-${cameraProjection}`}
                 makeDefault
+                enabled={!skinPaintEnabled}
                 enableDamping
                 zoomToCursor
                 enableRotate
@@ -2471,6 +2910,12 @@ export default function App() {
                           aria-pressed={selectedBodyArea === area.id}
                           onClick={() => {
                             setSelectedBodyArea(area.id);
+                            setSelectedBodyMorphGroupId(null);
+                            setSelectedEarMorphGroupId(null);
+                            setSelectedHeadMorphGroupId(null);
+                            setSelectedFaceMorphGroupId(null);
+                            setSelectedOtherMorphGroupId(null);
+                            setSelectedMorphId(null);
                             setMorphSearch('');
                             setMorphLibraryView('all');
                             setMorphTypeFilter('all');
@@ -2485,9 +2930,75 @@ export default function App() {
                     <section className="morph-library-pane" aria-label={`${morphSearch.trim() ? 'Search results' : activeBodyArea?.label ?? 'Character'} morph library`} data-ai-guide-target={activeBodyArea?.id === 'presets' ? 'preset-library' : 'morph-library'}>
                       <header className="morph-library-heading">
                         <div>
-                          <h2>{morphSearch.trim() ? 'Search Results' : activeBodyArea?.id === 'presets' ? 'Presets' : `${activeBodyArea?.label ?? 'Character'} Morphs`}</h2>
+                          {activeBodyArea?.id === 'body' && activeBodyMorphGroup && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedBodyMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> Body</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeBodyMorphGroup.label}</h2>
+                            </div>
+                            : activeBodyArea?.id === 'head' && activeHeadMorphGroup && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedHeadMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> Head</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeHeadMorphGroup.label}</h2>
+                            </div>
+                            : activeBodyArea?.id === 'face' && activeFaceMorphGroup && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedFaceMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> Face</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeFaceMorphGroup.label}</h2>
+                            </div>
+                            : activeBodyArea?.id === 'eyes' && activeEyeMorphGroup && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedEyeMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> Eyes</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeEyeMorphGroup.label}</h2>
+                            </div>
+                            : activeOtherMorphGroup && isOtherMorphAreaId(activeBodyArea?.id) && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedOtherMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> {activeBodyArea?.label ?? 'Morphs'}</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeOtherMorphGroup.label}</h2>
+                            </div>
+                            : activeBodyArea?.id === 'ears' && activeEarMorphGroup && !morphSearch.trim()
+                            ? <div className="morph-library-breadcrumb">
+                              <button type="button" onClick={() => {
+                                setSelectedEarMorphGroupId(null);
+                                setSelectedMorphId(null);
+                              }}><ArrowLeft size={13} /> Ears</button>
+                              <ChevronRight size={13} aria-hidden="true" />
+                              <h2>{activeEarMorphGroup.label}</h2>
+                            </div>
+                            : <h2>{morphSearch.trim() ? 'Search Results' : activeBodyArea?.id === 'presets' ? 'Presets' : `${activeBodyArea?.label ?? 'Character'} Morphs`}</h2>}
                           <p>{morphSearch.trim()
-                            ? `${visibleLibraryControls.length} matching controls across all body areas.`
+                            ? `${visibleLibraryControls.length} matching controls across all anatomy categories.`
+                            : activeBodyMorphGroup && activeBodyArea?.id === 'body'
+                              ? activeBodyMorphGroup.description
+                            : activeHeadMorphGroup && activeBodyArea?.id === 'head'
+                              ? activeHeadMorphGroup.description
+                            : activeFaceMorphGroup && activeBodyArea?.id === 'face'
+                              ? activeFaceMorphGroup.description
+                            : activeEyeMorphGroup && activeBodyArea?.id === 'eyes'
+                              ? activeEyeMorphGroup.description
+                            : activeOtherMorphGroup
+                              ? activeOtherMorphGroup.description
+                            : activeEarMorphGroup && activeBodyArea?.id === 'ears'
+                              ? activeEarMorphGroup.description
                             : activeBodyArea?.id === 'presets'
                               ? 'Character presets will be available here.'
                               : `Adjust ${activeBodyArea?.label.toLocaleLowerCase() ?? 'character'} shape, proportions and details.`}</p>
@@ -2519,6 +3030,120 @@ export default function App() {
                         ] as const).map(([view, label, count]) => <button key={view} type="button" className={morphLibraryView === view ? 'active' : ''} aria-pressed={morphLibraryView === view} onClick={() => setMorphLibraryView(view)}>{label}<small>{count}</small></button>)}
                       </div>
                       <div className="morph-card-grid">
+                        {isBodyMorphRoot && visibleBodyMorphGroups.map((group) => {
+                          const Icon = BODY_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedBodyMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
+                        {isHeadMorphRoot && visibleHeadMorphGroups.map((group) => {
+                          const Icon = HEAD_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedHeadMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
+                        {isFaceMorphRoot && visibleFaceMorphGroups.map((group) => {
+                          const Icon = FACE_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedFaceMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
+                        {isEyeMorphRoot && visibleEyeMorphGroups.map((group) => {
+                          const Icon = EYE_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedEyeMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
+                        {isOtherMorphRoot && visibleOtherMorphGroups.map((group) => {
+                          const Icon = OTHER_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedOtherMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
+                        {isEarMorphRoot && visibleEarMorphGroups.map((group) => {
+                          const Icon = EAR_MORPH_GROUP_ICONS[group.id];
+                          return <article className="morph-card morph-group-card" key={group.id}>
+                            <button
+                              className="morph-card-select morph-group-card-select"
+                              type="button"
+                              aria-label={`Open ${group.label}, ${group.count} morphs`}
+                              onClick={() => {
+                                setSelectedEarMorphGroupId(group.id);
+                                setSelectedMorphId(null);
+                              }}
+                            >
+                              <span className="morph-group-icon"><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                              <strong title={group.label}>{group.label}</strong>
+                              <small>{group.count} {group.count === 1 ? 'morph' : 'morphs'}</small>
+                              <span className="morph-group-description">{group.description}</span>
+                            </button>
+                          </article>;
+                        })}
                         {activeBodyArea?.id === 'presets' && bodyPresets.map((preset) => {
                           const selected = activeBodyPresetId === preset.id;
                           return <article className={`morph-card${selected ? ' selected' : ''} morph-card--custom-art morph-card--labeled-art`} key={preset.id} data-ai-guide-target={`preset:${preset.id}`}>
@@ -2536,7 +3161,7 @@ export default function App() {
                             </button>
                           </article>;
                         })}
-                        {displayedLibraryControls.map((control) => {
+                        {!isBodyMorphRoot && !isEarMorphRoot && !isHeadMorphRoot && !isFaceMorphRoot && !isEyeMorphRoot && !isOtherMorphRoot && displayedLibraryControls.map((control) => {
                           const Icon = morphAreas.find(({ id }) => id === morphAreaForControl(control))?.icon ?? PersonStanding;
                           const hasShoulderFrontCreaseArtwork = /shoulder.*front.*crease/i.test(`${control.id} ${control.label}`);
                           const customArtworkSrc = hasShoulderFrontCreaseArtwork
@@ -2546,18 +3171,33 @@ export default function App() {
                           const value = morphs[control.id] ?? 0;
                           const favorite = favoriteMorphIds.includes(control.id);
                           const label = morphDisplayLabel(control.label);
+                          const controlArea = morphAreaForControl(control);
+                          const resultGroup = controlArea === 'ears'
+                            ? EAR_MORPH_GROUPS.find(({ id }) => id === earMorphGroupForControl(control))?.label
+                            : controlArea === 'body'
+                              ? BODY_MORPH_GROUPS.find(({ id }) => id === bodyMorphGroupForControl(control))?.label
+                              : controlArea === 'head'
+                                ? HEAD_MORPH_GROUPS.find(({ id }) => id === headMorphGroupForControl(control))?.label
+                              : controlArea === 'face'
+                                ? FACE_MORPH_GROUPS.find(({ id }) => id === faceMorphGroupForControl(control))?.label
+                              : controlArea === 'eyes'
+                                ? EYE_MORPH_GROUPS.find(({ id }) => id === eyeMorphGroupForControl(control))?.label
+                              : isOtherMorphAreaId(controlArea)
+                                ? OTHER_MORPH_GROUPS[controlArea].find(({ id }) => id === otherMorphGroupForControl(controlArea, control))?.label
+                              : morphAreas.find(({ id }) => id === controlArea)?.label;
                           return <article className={`morph-card${selectedMorph?.id === control.id ? ' selected' : ''}${hasCustomArtwork ? ' morph-card--custom-art morph-card--labeled-art' : ''}`} key={control.id}>
                             <button
                               className="morph-card-select"
                               type="button"
                               aria-label={`Select ${label}`}
                               aria-pressed={selectedMorph?.id === control.id}
-                              onClick={() => setSelectedMorphId(control.id)}
+                              onClick={() => selectMorphControl(control)}
                             >
                               <span className={`morph-card-art morph-area-${morphAreaForControl(control)}${hasCustomArtwork ? ' has-custom-art' : ''}`}>{customArtworkSrc
                                 ? <img src={customArtworkSrc} alt="" aria-hidden="true" />
                                 : <Icon size={48} strokeWidth={1.15} aria-hidden="true" />}</span>
                               <strong title={label}>{label}</strong>
+                              {morphSearch.trim() && <small className="morph-card-group-label">{resultGroup ?? 'Other'}</small>}
                               {value !== 0 && <small>{value > 0 ? '+' : ''}{(value * 100).toFixed(0)}%</small>}
                             </button>
                             <button
@@ -2575,10 +3215,23 @@ export default function App() {
                             : 'Select a CC5/CC3+ character to use these presets.'}</p>
                           : activeBodyArea?.id !== 'presets' && visibleLibraryControls.length === 0
                             && <p className="morph-library-empty">{morphLibraryView === 'favorites' ? 'No favorite morphs in this category yet. Star a control to save it here.' : morphLibraryView === 'recent' ? 'Morphs you adjust will appear here.' : 'No matching morph controls.'}</p>}
-                        {morphMode === 'basic' && visibleLibraryControls.length > displayedLibraryControls.length && <button className="morph-show-advanced" type="button" onClick={() => setMorphMode('advanced')}>Show all {visibleLibraryControls.length} controls <ChevronRight size={15} /></button>}
+                        {morphMode === 'basic' && !isBodyMorphRoot && !isEarMorphRoot && !isHeadMorphRoot && !isFaceMorphRoot && !isEyeMorphRoot && !isOtherMorphRoot && visibleLibraryControls.length > displayedLibraryControls.length && <button className="morph-show-advanced" type="button" onClick={() => setMorphMode('advanced')}>Show all {visibleLibraryControls.length} controls <ChevronRight size={15} /></button>}
                       </div>
                     </section>
                     <aside className="morph-detail-pane" aria-label="Selected morph details">
+                      {isCc5FullMorphAsset && activeBodyArea?.id === 'ears' && <section className="morph-ear-preset" aria-label="Elven ear preset">
+                        <header><strong>Elven Ears</strong><small>CC3+ native morphs</small></header>
+                        <p>Applies verified pointed-ear, height, and angle morphs. Adjust the ear sliders below to refine the shape.</p>
+                        <button
+                          className="morph-reset-category"
+                          type="button"
+                          disabled={!elvenEarPresetAvailable || morphControlsDisabled || running}
+                          onClick={applyElvenEarPresetToDraft}
+                        ><Sparkles size={14} /> {elvenEarPresetApplied ? 'Reapply Elven Ears' : 'Apply Elven Ears'}</button>
+                        {!elvenEarPresetAvailable && <small className="morph-ear-preset-unavailable" role="status">{controls.length > 0
+                          ? 'Required native ear morphs are not available for this CC3+ asset.'
+                          : 'Loading the CC3+ ear morph controls…'}</small>}
+                      </section>}
                       {activeBodyArea?.id === 'presets' ? <>
                         <header className="morph-detail-heading">
                           <div><Sparkles size={24} aria-hidden="true" /><strong>{activeBodyPresetId
@@ -2592,6 +3245,63 @@ export default function App() {
                           disabled={running || appearanceSaving}
                           onClick={() => void runAction(() => selectDraftPreset(null))}
                         ><RotateCcw size={15} /> Undo preset</button>}
+                      </> : isBodyMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div><PersonStanding size={24} aria-hidden="true" /><strong>Browse body morphs</strong></div>
+                        </header>
+                        <div className="morph-detail-illustration morph-area-body" aria-hidden="true">
+                          <PersonStanding size={92} strokeWidth={0.9} />
+                        </div>
+                        <p className="morph-library-empty">Choose a body region or function to browse its morphs. Search also finds controls across every body group.</p>
+                      </> : isEarMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div><Ear size={24} aria-hidden="true" /><strong>Browse ear morphs</strong></div>
+                        </header>
+                        <div className="morph-detail-illustration morph-area-ears" aria-hidden="true">
+                          <Ear size={92} strokeWidth={0.9} />
+                        </div>
+                        <p className="morph-library-empty">Choose an anatomical group to browse its morphs. Search also finds ear controls across every group.</p>
+                      </> : isHeadMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div><ScanFace size={24} aria-hidden="true" /><strong>Browse head morphs</strong></div>
+                        </header>
+                        <div className="morph-detail-illustration morph-area-head" aria-hidden="true">
+                          <ScanFace size={92} strokeWidth={0.9} />
+                        </div>
+                        <p className="morph-library-empty">Choose a head region or function to browse its morphs. Search also finds controls across all anatomy categories.</p>
+                      </> : isFaceMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div><ScanFace size={24} aria-hidden="true" /><strong>Browse face morphs</strong></div>
+                        </header>
+                        <div className="morph-detail-illustration morph-area-face" aria-hidden="true">
+                          <ScanFace size={92} strokeWidth={0.9} />
+                        </div>
+                        <p className="morph-library-empty">Choose a face region or function to browse its morphs. Search also finds controls across all anatomy categories.</p>
+                      </> : isEyeMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div><Eye size={24} aria-hidden="true" /><strong>Browse eye morphs</strong></div>
+                        </header>
+                        <div className="morph-detail-illustration morph-area-eyes" aria-hidden="true">
+                          <Eye size={92} strokeWidth={0.9} />
+                        </div>
+                        <p className="morph-library-empty">Choose an eye region or function to browse its morphs. Search also finds controls across all anatomy categories.</p>
+                      </> : isOtherMorphRoot ? <>
+                        <header className="morph-detail-heading">
+                          <div>
+                            {(() => {
+                              const Icon = morphAreas.find(({ id }) => id === activeBodyArea?.id)?.icon ?? PersonStanding;
+                              return <Icon size={24} aria-hidden="true" />;
+                            })()}
+                            <strong>Browse {activeBodyArea?.label.toLocaleLowerCase() ?? 'character'} morphs</strong>
+                          </div>
+                        </header>
+                        <div className={`morph-detail-illustration morph-area-${activeBodyArea?.id ?? 'body'}`} aria-hidden="true">
+                          {(() => {
+                            const Icon = morphAreas.find(({ id }) => id === activeBodyArea?.id)?.icon ?? PersonStanding;
+                            return <Icon size={92} strokeWidth={0.9} />;
+                          })()}
+                        </div>
+                        <p className="morph-library-empty">Choose a group to browse its morphs. Search also finds controls across all groups.</p>
                       </> : selectedMorph ? <>
                         <header className="morph-detail-heading">
                           <div>
@@ -2659,7 +3369,7 @@ export default function App() {
                           )) : <p className="morph-related-empty">No related controls in this category.</p>}
                         </section>
                       </> : <p className="morph-library-empty">Choose a morph to see its controls.</p>}
-                      <button className="morph-reset-category" type="button" disabled={!activeCategoryHasChanges || morphControlsDisabled} onClick={resetMorphArea}><RotateCcw size={15} /> Reset {activeBodyArea?.label ?? 'Category'}</button>
+                      <button className="morph-reset-category" type="button" disabled={!activeCategoryHasChanges || morphControlsDisabled} onClick={resetMorphArea}><RotateCcw size={15} /> Reset {activeBodyMorphGroup && activeBodyArea?.id === 'body' ? activeBodyMorphGroup.label : activeHeadMorphGroup && activeBodyArea?.id === 'head' ? activeHeadMorphGroup.label : activeFaceMorphGroup && activeBodyArea?.id === 'face' ? activeFaceMorphGroup.label : activeEyeMorphGroup && activeBodyArea?.id === 'eyes' ? activeEyeMorphGroup.label : activeOtherMorphGroup ? activeOtherMorphGroup.label : activeEarMorphGroup && activeBodyArea?.id === 'ears' ? activeEarMorphGroup.label : activeBodyArea?.label ?? 'Category'}</button>
                       <p className="morph-editor-note">{morphsBaked
                         ? 'This shape is baked into the mesh. Restore the pre-bake checkpoint to edit sliders again.'
                         : morphPreviewMode === 'server'
@@ -2727,6 +3437,128 @@ export default function App() {
                       disabled={running || appearanceSaving}
                       onClick={() => void runAction(() => selectDraftSkin(null))}
                     ><RotateCcw size={15} /> Clear skin preview</button>}
+                    {selectedDraftSkin && <section className="skin-paint-tools" aria-label="Skin paint tools">
+                      <header>
+                        <div><strong>Paint on character</strong><small>{skinPaintStrokes.length} saved strokes</small></div>
+                        <button
+                          className={`skin-paint-toggle${skinPaintEnabled ? ' active' : ''}`}
+                          type="button"
+                          aria-pressed={skinPaintEnabled}
+                          disabled={!project || hasCharacter || running || appearanceSaving}
+                          onClick={() => setSkinPaintEnabled((enabled) => !enabled)}
+                        ><Palette size={14} />{skinPaintEnabled ? 'Done painting' : 'Paint mode'}</button>
+                      </header>
+                      <p>Enable paint mode, then drag on the character in the viewport. Paint is saved to this draft and compiled with the skin.</p>
+                      <div className="skin-paint-controls">
+                        <div className="skin-paint-tool-switch" role="group" aria-label="Paint tool">
+                          <button type="button" className={skinPaintTool === 'paint' ? 'active' : ''} aria-pressed={skinPaintTool === 'paint'} onClick={() => setSkinPaintTool('paint')}>Paint</button>
+                          <button type="button" className={skinPaintTool === 'erase' ? 'active' : ''} aria-pressed={skinPaintTool === 'erase'} onClick={() => setSkinPaintTool('erase')}>Erase</button>
+                        </div>
+                        <label className="skin-paint-color"><span>Color</span><input aria-label="Paint color" type="color" value={skinPaintColor} onChange={(event) => setSkinPaintColor(event.target.value)} /></label>
+                        <label className="skin-paint-range"><span>Brush <output>{skinPaintSize}px</output></span><input aria-label="Brush size" type="range" min="8" max="96" step="1" value={skinPaintSize} onChange={(event) => setSkinPaintSize(Number(event.target.value))} /></label>
+                        <label className="skin-paint-range"><span>Opacity <output>{skinPaintOpacity}%</output></span><input aria-label="Brush opacity" type="range" min="10" max="100" step="1" value={skinPaintOpacity} onChange={(event) => setSkinPaintOpacity(Number(event.target.value))} /></label>
+                      </div>
+                      <div className="skin-paint-actions">
+                        <button type="button" disabled={!skinPaintStrokes.length || running || appearanceSaving || hasCharacter} onClick={() => void runAction(() => saveSkinPaintStrokes(skinPaintStrokes.slice(0, -1)))}><RotateCcw size={13} /> Undo stroke</button>
+                        <button type="button" disabled={!skinPaintStrokes.length || running || appearanceSaving || hasCharacter} onClick={() => void runAction(() => saveSkinPaintStrokes([]))}>Clear paint</button>
+                        {appearanceSaving && <small role="status">Saving draft…</small>}
+                      </div>
+                    </section>}
+                    {selectedDraftSkin && <section className="semantic-skin-editor" aria-label="Semantic skin properties">
+                      <header className="semantic-skin-heading">
+                        <div><strong>Skin properties</strong><small>Live preview · saved with the draft</small></div>
+                        <span className={`semantic-skin-status${skinDefinitionDirty ? ' is-dirty' : ''}`}>
+                          {skinDefinitionSaving ? 'Saving…' : skinDefinitionDirty ? 'Unsaved' : 'Saved'}
+                        </span>
+                      </header>
+                      <p className="compatible-assets-note">Adjust supported material properties and preview them on the selected skin. Regional effects and texture generation are not available in this slice.</p>
+                      <div className="semantic-skin-controls">
+                        <label className="skin-paint-range">
+                          <span>Tone <output>{skinDefinitionDraft.base.tone.toFixed(2)}</output></span>
+                          <input
+                            aria-label="Skin tone"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={skinDefinitionDraft.base.tone}
+                            disabled={hasCharacter || running || skinDefinitionSaving}
+                            onChange={(event) => updateSkinDefinition({ base: { tone: Number(event.target.value) } })}
+                          />
+                        </label>
+                        <label>
+                          <span>Undertone</span>
+                          <select
+                            aria-label="Skin undertone"
+                            value={skinDefinitionDraft.base.undertone}
+                            disabled={hasCharacter || running || skinDefinitionSaving}
+                            onChange={(event) => updateSkinDefinition({
+                              base: { undertone: event.target.value as SkinDefinition['base']['undertone'] },
+                            })}
+                          >
+                            <option value="cool">Cool</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="warm">Warm</option>
+                            <option value="olive">Olive</option>
+                          </select>
+                        </label>
+                        <label className="skin-paint-range">
+                          <span>Roughness <output>{skinDefinitionDraft.surface.roughness.toFixed(2)}</output></span>
+                          <input
+                            aria-label="Skin roughness"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={skinDefinitionDraft.surface.roughness}
+                            disabled={hasCharacter || running || skinDefinitionSaving}
+                            onChange={(event) => updateSkinDefinition({ surface: { roughness: Number(event.target.value) } })}
+                          />
+                        </label>
+                      </div>
+                      {!hasCharacter && <button
+                        className="save-cc3-morphs morph-save-button semantic-skin-save"
+                        type="button"
+                        disabled={!skinDefinitionDirty || running || skinDefinitionSaving}
+                        onClick={() => void runAction(() => saveSkinDefinition(skinDefinitionDraft))}
+                      >{skinDefinitionSaving ? 'Saving skin properties…' : 'Save skin properties'}</button>}
+                      {hasCharacter && <p className="compatible-assets-note">Compiled skin properties are read-only. Create a new draft to edit them.</p>}
+                      <form className="semantic-skin-interpreter" onSubmit={(event) => {
+                        event.preventDefault();
+                        void runAction(interpretSkinPrompt);
+                      }}>
+                        <label htmlFor="skin-interpretation-prompt">Describe a skin adjustment</label>
+                        <textarea
+                          id="skin-interpretation-prompt"
+                          value={skinPrompt}
+                          maxLength={1200}
+                          placeholder="For example: make the skin slightly warmer and less shiny"
+                          disabled={hasCharacter || running || skinInterpretationLoading || skinDefinitionDirty}
+                          onChange={(event) => setSkinPrompt(event.target.value)}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!skinPrompt.trim() || hasCharacter || running || skinInterpretationLoading || skinDefinitionDirty}
+                        >{skinInterpretationLoading ? 'Interpreting…' : 'Interpret with AI'}</button>
+                      </form>
+                      {skinInterpretationError && <p className="semantic-skin-error" role="alert">{skinInterpretationError}</p>}
+                      {skinInterpretation && <div className="semantic-skin-proposal" aria-live="polite">
+                        <strong>Proposed draft change</strong>
+                        <p>{skinInterpretation.explanation}</p>
+                        <small>The viewport is previewing this proposal; it is not saved yet.</small>
+                        {skinInterpretation.changed_properties.length > 0
+                          ? <small>Changes: {skinInterpretation.changed_properties.join(', ')}</small>
+                          : <small>No supported properties changed.</small>}
+                        <div className="semantic-skin-proposal-actions">
+                          <button
+                            type="button"
+                            disabled={running || skinDefinitionSaving || skinInterpretation.changed_properties.length === 0}
+                            onClick={() => void runAction(applySkinInterpretation)}
+                          >Apply to draft</button>
+                          <button type="button" disabled={running || skinDefinitionSaving} onClick={() => setSkinInterpretation(null)}>Discard proposal</button>
+                        </div>
+                      </div>}
+                    </section>}
                     {!skinAssetsLoading && !skinAssetsError && skinAssets.length === 0 && <p>No integrity-verified skin assets are installed. Prepare the local CC3+ skin package to enable this card.</p>}
                     {!skinAssetsLoading && <div className="compatible-assets-grid">
                       {skinAssets.map((asset) => {

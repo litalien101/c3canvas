@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+from types import SimpleNamespace
 import uuid
 import zipfile
 
@@ -148,6 +149,7 @@ def test_worker_job_schema_accepts_only_cc3_operations(tmp_path):
             scope_component_ids=[preset_component_id],
         )
         assert WORKER_MODULE.load_job(valid_preset)["operation"] == "apply_cc3_body_preset"
+
         for preset_id in WORKER_MODULE.CC5_BODY_PRESETS:
             allowlisted_preset = create_job(
                 tmp_path,
@@ -274,6 +276,100 @@ def test_worker_job_schema_accepts_only_cc3_operations(tmp_path):
     linked_job.symlink_to(valid_import)
     with pytest.raises(ValueError, match="symbolic link"):
         WORKER_MODULE.load_job(linked_job)
+
+
+def test_worker_validates_semantic_skin_definition(tmp_path):
+    skin_asset_id = next(iter(WORKER_MODULE.SKIN_ASSETS))
+    arguments = {
+        "component_id": str(uuid.uuid4()),
+        "asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
+        "skin_asset_id": skin_asset_id,
+        "skin_definition": {
+            "version": 1,
+            "base": {"tone": 0.62, "undertone": "neutral"},
+            "surface": {"roughness": 0.42},
+        },
+    }
+    valid = create_job(
+        tmp_path,
+        operation="import_base_model",
+        expected_scene_version=0,
+        arguments=arguments,
+    )
+    assert WORKER_MODULE.load_job(valid)["arguments"]["skin_definition"] == arguments["skin_definition"]
+
+    invalid = create_job(
+        tmp_path,
+        operation="import_base_model",
+        expected_scene_version=0,
+        arguments={
+            **arguments,
+            "skin_definition": {
+                **arguments["skin_definition"],
+                "base": {"tone": 0.62, "undertone": "red"},
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="unsupported skin properties"):
+        WORKER_MODULE.load_job(invalid)
+
+
+def test_worker_applies_skin_semantics_without_losing_source_roughness():
+    base_color = SimpleNamespace(links=[], default_value=(0.5, 0.4, 0.3, 1.0))
+    roughness = SimpleNamespace(links=[], default_value=0.8)
+    shader = SimpleNamespace(
+        type="BSDF_PRINCIPLED",
+        inputs={"Base Color": base_color, "Roughness": roughness},
+    )
+    material = SimpleNamespace(
+        name="Body_CC3PlusFemaleSkin",
+        use_nodes=True,
+        node_tree=SimpleNamespace(nodes=[shader]),
+        diffuse_color=(1.0, 1.0, 1.0, 1.0),
+    )
+    definition = {
+        "version": 1,
+        "base": {"tone": 1.0, "undertone": "warm"},
+        "surface": {"roughness": 0.21},
+    }
+
+    result = WORKER_MODULE.apply_skin_definition(
+        SimpleNamespace(data=SimpleNamespace(materials=[material])),
+        definition,
+    )
+
+    assert result["material_parameters"]["roughness_scale"] == 0.5
+    assert roughness.default_value == pytest.approx(0.4)
+    assert base_color.default_value[:3] == pytest.approx((0.624, 0.48, 0.3456))
+
+
+def test_skin_paint_worker_validation_is_bounded_and_region_scoped():
+    stroke = {
+        "material": "Std_Skin_Head",
+        "tool": "paint",
+        "color": "#c84051",
+        "radius": 0.01,
+        "opacity": 0.75,
+        "points": [{"u": 0.25, "v": 0.4}, {"u": 0.3, "v": 0.45}],
+    }
+    assert WORKER_MODULE.validate_skin_paint_strokes([stroke], "skin_cc3plus_female_1") == [stroke]
+    erase_stroke = {**stroke, "tool": "erase"}
+    assert WORKER_MODULE.validate_skin_paint_strokes(
+        [erase_stroke],
+        "skin_cc3plus_female_1",
+    ) == [erase_stroke]
+    with pytest.raises(ValueError, match="require an installed skin asset"):
+        WORKER_MODULE.validate_skin_paint_strokes([stroke], None)
+    with pytest.raises(ValueError, match="invalid brush settings"):
+        WORKER_MODULE.validate_skin_paint_strokes(
+            [{**stroke, "material": "Std_Skin_Eye"}],
+            "skin_cc3plus_female_1",
+        )
+    with pytest.raises(ValueError, match="UV coordinates"):
+        WORKER_MODULE.validate_skin_paint_strokes(
+            [{**stroke, "points": [{"u": 1.1, "v": 0.5}]}],
+            "skin_cc3plus_female_1",
+        )
 
 
 def test_base_compile_imports_selected_quality_eye_geometry(tmp_path):

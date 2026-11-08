@@ -13,7 +13,10 @@ The database schema may evolve, but these semantics must remain stable.
 - `base_model_asset_id`: selected allowlisted base model; defaults to `character_cc3_morphs_v1`
 - `draft_morphs`: complete selected-manifest control map saved before final Blender compile
 - `draft_revision`: optimistic concurrency counter for draft morph-map writes; independent of `scene_version`
-- `draft_appearance`: selected eye and compatible body preset IDs; persisted without Blender geometry or `scene_version` changes
+- `draft_appearance`: selected eye, compatible body preset, and skin asset IDs; persisted without Blender geometry or `scene_version` changes
+- `draft_skin_definition`: versioned semantic skin properties (`base.tone`, `base.undertone`, and `surface.roughness`) saved independently of paint strokes and applied during final compile
+- `draft_skin_revision`: optimistic concurrency counter for semantic skin definition writes; independent of `scene_version`
+- `draft_skin_paint_strokes`: bounded UV paint/erase operations associated with the selected skin
 - `active_phase_id`
 - `scene_version`: monotonic integer
 - `manifest_version`
@@ -96,6 +99,7 @@ See `examples/project_manifest.json`.
 ## Consistency rules
 - Manifest and `.blend` scene version must match on commit.
 - Draft morph/appearance updates advance only draft state and use browser previews. The initial scene applies saved draft values and selected assets together only during explicit, approval-gated final Save / Compile or export. Later changes require explicit, supported scene operations.
+- Semantic skin preview edits remain local until saved to the project draft; only the validated saved definition and selected skin are applied together during explicit final compile. AI interpretation returns a proposal and never saves it automatically.
 - If an operation crashes after scene change but before database commit, discard/restore the uncommitted scene artifact.
 - A checkpoint includes both Blender scene and manifest.
 - A stale command is not executed against a newer scene without revalidation.

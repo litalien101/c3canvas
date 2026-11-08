@@ -165,6 +165,31 @@ class SQLiteProjectRepository:
                     )
                 connection.execute("INSERT INTO schema_migrations (version) VALUES (8)")
 
+            applied_v9 = connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 9"
+            ).fetchone()
+            if not applied_v9:
+                connection.execute(
+                    "ALTER TABLE project_state ADD COLUMN draft_skin_paint_strokes_json "
+                    "TEXT NOT NULL DEFAULT '[]'"
+                )
+                connection.execute("INSERT INTO schema_migrations (version) VALUES (9)")
+
+            applied_v10 = connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 10"
+            ).fetchone()
+            if not applied_v10:
+                connection.execute(
+                    "ALTER TABLE project_state ADD COLUMN draft_skin_definition_json "
+                    "TEXT NOT NULL DEFAULT '{\"version\":1,\"base\":{\"tone\":0.62,\"undertone\":\"neutral\"},"
+                    "\"surface\":{\"roughness\":0.42}}'"
+                )
+                connection.execute(
+                    "ALTER TABLE project_state ADD COLUMN draft_skin_revision "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execute("INSERT INTO schema_migrations (version) VALUES (10)")
+
     def create(self, project: Project) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -193,7 +218,9 @@ class SQLiteProjectRepository:
                 """
                 SELECT p.*, s.phases_json, s.components_json, s.checkpoints_json,
                        s.plan_json, s.planning_metadata_json, s.references_json, s.messages_json, s.operations_json,
-                       s.draft_morphs_json, s.draft_revision, s.draft_appearance_json
+                       s.draft_morphs_json, s.draft_revision, s.draft_appearance_json,
+                       s.draft_skin_paint_strokes_json, s.draft_skin_definition_json,
+                       s.draft_skin_revision
                 FROM projects AS p
                 JOIN project_state AS s ON s.project_id = p.id
                 WHERE p.id = ?
@@ -208,7 +235,9 @@ class SQLiteProjectRepository:
                 """
                 SELECT p.*, s.phases_json, s.components_json, s.checkpoints_json,
                        s.plan_json, s.planning_metadata_json, s.references_json, s.messages_json, s.operations_json,
-                       s.draft_morphs_json, s.draft_revision, s.draft_appearance_json
+                       s.draft_morphs_json, s.draft_revision, s.draft_appearance_json,
+                       s.draft_skin_paint_strokes_json, s.draft_skin_definition_json,
+                       s.draft_skin_revision
                 FROM projects AS p
                 JOIN project_state AS s ON s.project_id = p.id
                 ORDER BY p.created_at, p.id
@@ -281,9 +310,10 @@ class SQLiteProjectRepository:
             INSERT INTO project_state (
                 project_id, phases_json, components_json, checkpoints_json,
                 plan_json, planning_metadata_json, references_json, messages_json, operations_json,
-                draft_morphs_json, draft_revision, draft_appearance_json
+                draft_morphs_json, draft_revision, draft_appearance_json, draft_skin_paint_strokes_json,
+                draft_skin_definition_json, draft_skin_revision
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(project_id) DO UPDATE SET
                 phases_json = excluded.phases_json,
                 components_json = excluded.components_json,
@@ -295,7 +325,10 @@ class SQLiteProjectRepository:
                 operations_json = excluded.operations_json,
                 draft_morphs_json = excluded.draft_morphs_json,
                 draft_revision = excluded.draft_revision,
-                draft_appearance_json = excluded.draft_appearance_json
+                draft_appearance_json = excluded.draft_appearance_json,
+                draft_skin_paint_strokes_json = excluded.draft_skin_paint_strokes_json,
+                draft_skin_definition_json = excluded.draft_skin_definition_json,
+                draft_skin_revision = excluded.draft_skin_revision
             """,
             (
                 str(project.id),
@@ -310,6 +343,9 @@ class SQLiteProjectRepository:
                 json.dumps(project.draft_morphs),
                 project.draft_revision,
                 json.dumps(project.draft_appearance),
+                json.dumps([stroke.model_dump(mode="json") for stroke in project.draft_skin_paint_strokes]),
+                json.dumps(project.draft_skin_definition.model_dump(mode="json")),
+                project.draft_skin_revision,
             ),
         )
 
@@ -338,6 +374,9 @@ class SQLiteProjectRepository:
             draft_morphs=json.loads(row["draft_morphs_json"]),
             draft_revision=row["draft_revision"],
             draft_appearance=draft_appearance,
+            draft_skin_paint_strokes=json.loads(row["draft_skin_paint_strokes_json"]),
+            draft_skin_definition=json.loads(row["draft_skin_definition_json"]),
+            draft_skin_revision=row["draft_skin_revision"],
             mode=row["mode"],
         )
 

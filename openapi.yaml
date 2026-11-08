@@ -401,6 +401,68 @@ paths:
           description: Project is already compiled
         '422':
           description: Invalid eye or preset selection
+  /api/v1/projects/{project_id}/draft-skin:
+    patch:
+      summary: Update Project Draft Skin
+      description: Saves a validated semantic skin definition with optimistic revision checking; does not invoke Blender or change scene_version.
+      operationId: update_project_draft_skin_api_v1_projects__project_id__draft_skin_patch
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftSkinUpdateRequest'
+      responses:
+        '200':
+          description: Updated project draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '409':
+          description: Stale revision, missing skin selection, or compiled project
+        '422':
+          description: Invalid semantic skin definition
+  /api/v1/projects/{project_id}/skin/interpret:
+    post:
+      summary: Interpret Skin Prompt
+      description: Returns a validated, reviewable proposal without saving it. Uses the server-side Copilot bridge.
+      operationId: interpret_skin_prompt_api_v1_projects__project_id__skin_interpret_post
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Project Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkinInterpretationRequest'
+      responses:
+        '200':
+          description: Validated semantic skin proposal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkinInterpretationResponse'
+        '502':
+          description: Copilot returned an invalid skin interpretation
+        '503':
+          description: Copilot bridge unavailable
+        '422':
+          description: Invalid prompt
   /api/v1/projects/{project_id}/preview:
     get:
       summary: Read Project Preview
@@ -1198,12 +1260,207 @@ components:
           - type: string
           - type: 'null'
           title: Body Preset Id
+        skin_asset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Skin Asset Id
+        skin_paint_strokes:
+          items:
+            $ref: '#/components/schemas/SkinPaintStroke'
+          type: array
+          maxItems: 500
+          title: Skin Paint Strokes
       additionalProperties: false
       type: object
       required:
       - eye_asset_id
       - body_preset_id
       title: DraftAppearanceUpdateRequest
+    DraftSkinUpdateRequest:
+      properties:
+        expected_draft_skin_revision:
+          type: integer
+          minimum: 0
+          title: Expected Draft Skin Revision
+        skin_definition:
+          $ref: '#/components/schemas/SkinDefinition'
+      additionalProperties: false
+      type: object
+      required:
+      - expected_draft_skin_revision
+      - skin_definition
+      title: DraftSkinUpdateRequest
+    SkinDefinition:
+      properties:
+        version:
+          type: integer
+          const: 1
+          title: Version
+          default: 1
+        base:
+          $ref: '#/components/schemas/SkinBaseDefinition'
+        surface:
+          $ref: '#/components/schemas/SkinSurfaceDefinition'
+      additionalProperties: false
+      type: object
+      title: SkinDefinition
+    SkinBaseDefinition:
+      properties:
+        tone:
+          type: number
+          maximum: 1
+          minimum: 0
+          title: Tone
+          default: 0.62
+        undertone:
+          type: string
+          enum: [cool, neutral, warm, olive]
+          title: Undertone
+          default: neutral
+      additionalProperties: false
+      type: object
+      title: SkinBaseDefinition
+    SkinSurfaceDefinition:
+      properties:
+        roughness:
+          type: number
+          maximum: 1
+          minimum: 0
+          title: Roughness
+          default: 0.42
+      additionalProperties: false
+      type: object
+      title: SkinSurfaceDefinition
+    SkinInterpretationRequest:
+      properties:
+        prompt:
+          type: string
+          maxLength: 1200
+          minLength: 1
+          title: Prompt
+      additionalProperties: false
+      type: object
+      required:
+      - prompt
+      title: SkinInterpretationRequest
+    SkinInterpretationResponse:
+      properties:
+        patch:
+          $ref: '#/components/schemas/SkinDefinitionPatch'
+        preview:
+          $ref: '#/components/schemas/SkinDefinition'
+        changed_properties:
+          items:
+            type: string
+          type: array
+          title: Changed Properties
+        explanation:
+          type: string
+          maxLength: 700
+          minLength: 1
+          title: Explanation
+      type: object
+      required:
+      - patch
+      - preview
+      - changed_properties
+      - explanation
+      title: SkinInterpretationResponse
+    SkinDefinitionPatch:
+      properties:
+        base:
+          anyOf:
+          - $ref: '#/components/schemas/SkinBasePatch'
+          - type: 'null'
+        surface:
+          anyOf:
+          - $ref: '#/components/schemas/SkinSurfacePatch'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      title: SkinDefinitionPatch
+    SkinBasePatch:
+      properties:
+        tone:
+          anyOf:
+          - type: number
+            maximum: 1
+            minimum: 0
+          - type: 'null'
+          title: Tone
+        undertone:
+          anyOf:
+          - type: string
+            enum: [cool, neutral, warm, olive]
+          - type: 'null'
+          title: Undertone
+      additionalProperties: false
+      type: object
+      title: SkinBasePatch
+    SkinSurfacePatch:
+      properties:
+        roughness:
+          anyOf:
+          - type: number
+            maximum: 1
+            minimum: 0
+          - type: 'null'
+          title: Roughness
+      additionalProperties: false
+      type: object
+      title: SkinSurfacePatch
+    SkinPaintPoint:
+      properties:
+        u:
+          type: number
+          maximum: 1
+          minimum: 0
+          title: U
+        v:
+          type: number
+          maximum: 1
+          minimum: 0
+          title: V
+      additionalProperties: false
+      type: object
+      required: [u, v]
+      title: SkinPaintPoint
+    SkinPaintStroke:
+      properties:
+        material:
+          type: string
+          enum: [Std_Skin_Head, Std_Skin_Body, Std_Skin_Arm, Std_Skin_Leg]
+          title: Material
+        tool:
+          type: string
+          enum: [paint, erase]
+          title: Tool
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          title: Color
+        radius:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 0.1
+          title: Radius
+        opacity:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+          title: Opacity
+        points:
+          items:
+            $ref: '#/components/schemas/SkinPaintPoint'
+          type: array
+          minItems: 1
+          maxItems: 256
+          title: Points
+      additionalProperties: false
+      type: object
+      required: [material, tool, color, radius, opacity, points]
+      title: SkinPaintStroke
     HTTPValidationError:
       properties:
         detail:
@@ -1219,6 +1476,35 @@ components:
           type: string
           const: character_cc3_morphs_v1
           title: Asset Id
+        morphs:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Morphs
+        preset_id:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 100
+          - type: 'null'
+          title: Preset Id
+        skin_asset_id:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 100
+          - type: 'null'
+          title: Skin Asset Id
+        skin_paint_strokes:
+          items:
+            $ref: '#/components/schemas/SkinPaintStroke'
+          type: array
+          maxItems: 500
+          title: Skin Paint Strokes
+        skin_definition:
+          $ref: '#/components/schemas/SkinDefinition'
       additionalProperties: false
       type: object
       required:
@@ -1528,6 +1814,17 @@ components:
           title: Draft Revision
         draft_appearance:
           $ref: '#/components/schemas/DraftAppearanceUpdateRequest'
+        draft_skin_paint_strokes:
+          items:
+            $ref: '#/components/schemas/SkinPaintStroke'
+          type: array
+          title: Draft Skin Paint Strokes
+        draft_skin_definition:
+          $ref: '#/components/schemas/SkinDefinition'
+        draft_skin_revision:
+          type: integer
+          title: Draft Skin Revision
+          default: 0
         mode:
           type: string
           const: blender

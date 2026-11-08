@@ -22,7 +22,7 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .assets import InvalidImageError, LocalAssetStore, validate_image
 from .assistant import AssistantGuidance, AssistantProposal, AssistantTurn, InvalidAssistantTurn, parse_assistant_turn
@@ -43,6 +43,12 @@ from .planning import (
     validate_plan,
 )
 from .repository import SQLiteProjectRepository, create_default_repository
+from .semantic_skin import (
+    SkinDefinition,
+    SkinDefinitionPatch,
+    apply_skin_patch,
+    skin_material_parameters,
+)
 
 AssetId = Literal[
     "character_cc3_morphs_v1",
@@ -255,6 +261,28 @@ class SkinAsset(BaseModel):
     materials: dict[str, dict[str, str]]
 
 
+class SkinPaintPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    u: float = Field(ge=0, le=1)
+    v: float = Field(ge=0, le=1)
+
+
+class SkinPaintStroke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    material: Literal["Std_Skin_Head", "Std_Skin_Body", "Std_Skin_Arm", "Std_Skin_Leg"]
+    tool: Literal["paint", "erase"]
+    color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    radius: float = Field(gt=0, le=0.1)
+    opacity: float = Field(gt=0, le=1)
+    points: list[SkinPaintPoint] = Field(min_length=1, max_length=256)
+
+
+def validate_skin_paint_strokes(strokes: list[SkinPaintStroke]) -> list[SkinPaintStroke]:
+    if sum(len(stroke.points) for stroke in strokes) > 20_000:
+        raise ValueError("skin paint draft exceeds the supported point limit")
+    return strokes
+
+
 class Phase(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     phase_key: str
@@ -285,6 +313,8 @@ class ImportBaseModelArguments(BaseModel):
     morphs: dict[str, float] | None = None
     preset_id: str | None = Field(default=None, min_length=1, max_length=100)
     skin_asset_id: str | None = Field(default=None, min_length=1, max_length=100)
+    skin_paint_strokes: list[SkinPaintStroke] = Field(default_factory=list, max_length=500)
+    skin_definition: SkinDefinition = Field(default_factory=SkinDefinition)
 
     @field_validator("morphs", mode="before")
     @classmethod
@@ -295,6 +325,17 @@ class ImportBaseModelArguments(BaseModel):
     @classmethod
     def validate_preset(cls, value):
         return validate_body_preset_id(value)
+
+    @field_validator("skin_paint_strokes")
+    @classmethod
+    def validate_skin_paint_point_limit(cls, value):
+        return validate_skin_paint_strokes(value)
+
+    @model_validator(mode="after")
+    def require_skin_asset_for_paint(self):
+        if self.skin_paint_strokes and self.skin_asset_id is None:
+            raise ValueError("skin paint strokes require a selected skin asset")
+        return self
 
 
 class ImportBaseModelTool(BaseModel):
@@ -345,6 +386,38 @@ class DraftAppearanceUpdateRequest(BaseModel):
     eye_asset_id: str | None
     body_preset_id: str | None
     skin_asset_id: str | None = None
+    skin_paint_strokes: list[SkinPaintStroke] | None = Field(default=None, max_length=500)
+
+    @field_validator("skin_paint_strokes")
+    @classmethod
+    def validate_skin_paint_point_limit(cls, value):
+        return None if value is None else validate_skin_paint_strokes(value)
+
+    @model_validator(mode="after")
+    def require_skin_asset_for_paint(self):
+        if self.skin_paint_strokes and self.skin_asset_id is None:
+            raise ValueError("skin paint strokes require a selected skin asset")
+        return self
+
+
+class DraftSkinUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_draft_skin_revision: int = Field(ge=0)
+    skin_definition: SkinDefinition
+
+
+class SkinInterpretationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1, max_length=1200)
+
+
+class SkinInterpretationResponse(BaseModel):
+    patch: SkinDefinitionPatch
+    preview: SkinDefinition
+    changed_properties: list[str]
+    explanation: str = Field(min_length=1, max_length=700)
 
 
 def validate_morph_value_map(value: object) -> dict[str, float]:
@@ -469,6 +542,9 @@ class Project(BaseModel):
             "skin_asset_id": None,
         }
     )
+    draft_skin_paint_strokes: list[SkinPaintStroke] = Field(default_factory=list)
+    draft_skin_definition: SkinDefinition = Field(default_factory=SkinDefinition)
+    draft_skin_revision: int = 0
     mode: Literal["blender"] = "blender"
 
 
@@ -1304,6 +1380,18 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 status_code=409,
                 detail={"code": "SKIN_SELECTION_MISMATCH", "message": "Compile the skin selection saved in the project draft."},
             )
+        if payload.arguments.skin_definition != project.draft_skin_definition:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SKIN_DEFINITION_MISMATCH", "message": "Compile the semantic skin definition saved in the project draft."},
+            )
+        if [stroke.model_dump(mode="json") for stroke in payload.arguments.skin_paint_strokes] != [
+            stroke.model_dump(mode="json") for stroke in project.draft_skin_paint_strokes
+        ]:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SKIN_PAINT_DRAFT_MISMATCH", "message": "Compile the skin paint strokes saved in the project draft."},
+            )
         skin_asset = skin_asset_by_id(skin_asset_id) if skin_asset_id is not None else None
         if skin_asset_id is not None and (
             skin_asset is None
@@ -1385,6 +1473,12 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             }
         if skin_asset is not None:
             arguments["skin_asset_id"] = skin_asset["id"]
+            arguments["skin_definition"] = project.draft_skin_definition.model_dump(mode="json")
+            if project.draft_skin_paint_strokes:
+                arguments["skin_paint_strokes"] = [
+                    stroke.model_dump(mode="json")
+                    for stroke in project.draft_skin_paint_strokes
+                ]
         try:
             blender_result = run_blender_operation(
                 data_directory=REPOSITORY.path.parent,
@@ -1508,6 +1602,18 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 status_code=502,
                 detail={"code": "SKIN_ASSET_VALIDATION_FAILED", "message": "Blender did not confirm the selected pinned skin materials."},
             )
+        if project.draft_skin_paint_strokes:
+            expected_skin_paint_result = {
+                "stroke_count": len(project.draft_skin_paint_strokes),
+                "painted_materials": sorted({
+                    stroke.material for stroke in project.draft_skin_paint_strokes
+                }),
+            }
+            if worker_result.get("skin_paint") != expected_skin_paint_result:
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "SKIN_PAINT_VALIDATION_FAILED", "message": "Blender did not confirm the saved skin paint strokes."},
+                )
         component["geometry_hash"] = geometry_hash
         component["object_ids"] = object_ids
         component["material_references"] = sorted(set(worker_result.get("material_names", [])))
@@ -1544,6 +1650,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             component["source_asset"]["blend_sha256"] = worker_result["source_blend_sha256"]
         if skin_asset is not None:
             component["source_asset"]["skin_asset_id"] = skin_asset["id"]
+            component["source_asset"]["skin_definition"] = project.draft_skin_definition.model_dump(mode="json")
         component["cc3_morphs"] = {name: float(morphs[name]) for name in sorted(expected_morph_names)}
         component["cc3_preset_id"] = preset_id
         component["notes"] = worker_result["warning"]
@@ -2612,14 +2719,140 @@ def update_project_draft_appearance(
                 status_code=422,
                 detail={"code": "SKIN_ASSET_UNAVAILABLE", "message": "Choose an installed skin compatible with the selected character."},
             )
+    previous_skin_asset_id = project.draft_appearance.get("skin_asset_id")
     project.draft_appearance = {
         "eye_asset_id": payload.eye_asset_id,
         "body_preset_id": payload.body_preset_id,
         "skin_asset_id": skin_asset_id,
     }
+    if "skin_paint_strokes" in payload.model_fields_set:
+        project.draft_skin_paint_strokes = payload.skin_paint_strokes or []
+    elif previous_skin_asset_id != skin_asset_id:
+        project.draft_skin_paint_strokes = []
+    if previous_skin_asset_id != skin_asset_id:
+        project.draft_skin_definition = SkinDefinition()
+        project.draft_skin_revision += 1
     project.updated_at = datetime.now(timezone.utc)
     REPOSITORY.save(project)
     return project
+
+
+@app.patch("/api/v1/projects/{project_id}/draft-skin", response_model=Project)
+def update_project_draft_skin(
+    project_id: UUID,
+    payload: DraftSkinUpdateRequest,
+) -> Project:
+    project = get_project_or_404(project_id)
+    if any(isinstance(component.get("source_asset"), dict) for component in project.components):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PROJECT_ALREADY_COMPILED", "message": "Skin drafts can only be changed before final Blender compilation."},
+        )
+    if project.draft_appearance.get("skin_asset_id") is None:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "SKIN_ASSET_REQUIRED", "message": "Select a compatible skin asset before editing its semantic properties."},
+        )
+    if payload.expected_draft_skin_revision != project.draft_skin_revision:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "STALE_SKIN_DRAFT", "message": "The skin draft changed. Reload it before applying this edit."},
+        )
+    project.draft_skin_definition = payload.skin_definition
+    project.draft_skin_revision += 1
+    project.updated_at = datetime.now(timezone.utc)
+    REPOSITORY.save(project)
+    return project
+
+
+@app.post(
+    "/api/v1/projects/{project_id}/skin/interpret",
+    response_model=SkinInterpretationResponse,
+)
+async def interpret_skin_prompt(
+    project_id: UUID,
+    payload: SkinInterpretationRequest,
+) -> SkinInterpretationResponse:
+    project = get_project_or_404(project_id)
+    if any(isinstance(component.get("source_asset"), dict) for component in project.components):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PROJECT_ALREADY_COMPILED", "message": "Skin interpretation is available only in an uncompiled draft."},
+        )
+    skin_asset_id = project.draft_appearance.get("skin_asset_id")
+    skin_asset = skin_asset_by_id(skin_asset_id) if skin_asset_id else None
+    if (
+        skin_asset is None
+        or project.base_model_asset_id not in skin_asset.get("compatible_asset_ids", [])
+        or not skin_asset_is_integrity_valid(skin_asset)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "SKIN_ASSET_REQUIRED", "message": "Select a compatible installed skin before asking for an interpretation."},
+        )
+    system_prompt = (
+        "You interpret skin appearance requests as a partial update to the provided semantic skin draft. "
+        "Return exactly one JSON object with keys patch and explanation. Supported patch fields only: "
+        "base.tone (number from 0 to 1), base.undertone (cool, neutral, warm, olive), and "
+        "surface.roughness (number from 0 to 1). Omit every unchanged property. Preserve all properties not "
+        "explicitly affected by the user's request. Do not invent freckles, regional masks, wrinkles, pore maps, "
+        "subsurface controls, textures, or other unsupported effects; explain those limitations instead. "
+        "Never claim that the draft was saved or that textures were generated."
+    )
+    context = json.dumps({
+        "current_skin_definition": project.draft_skin_definition.model_dump(mode="json"),
+        "supported_properties": {
+            "base.tone": {"minimum": 0, "maximum": 1},
+            "base.undertone": ["cool", "neutral", "warm", "olive"],
+            "surface.roughness": {"minimum": 0, "maximum": 1},
+        },
+        "selected_skin": {"id": skin_asset["id"], "name": skin_asset["name"]},
+    })
+    try:
+        raw_reply = await generate_copilot_reply(
+            system_prompt=system_prompt,
+            project_context=context,
+            messages=[{"role": "user", "content": payload.prompt.strip()}],
+        )
+    except CopilotBridgeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "COPILOT_UNAVAILABLE", "message": str(error)},
+        ) from error
+    if raw_reply is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "COPILOT_UNAVAILABLE", "message": "Connect the VS Code Copilot bridge before interpreting skin prompts."},
+        )
+    candidate = raw_reply.strip()
+    if candidate.startswith("```json") and candidate.endswith("```"):
+        candidate = candidate[7:-3].strip()
+    try:
+        response_data = json.loads(candidate)
+        if not isinstance(response_data, dict) or set(response_data) != {"patch", "explanation"}:
+            raise ValueError("The assistant response must contain only patch and explanation.")
+        patch = SkinDefinitionPatch.model_validate(response_data["patch"])
+        explanation = response_data["explanation"]
+        if not isinstance(explanation, str):
+            raise ValueError("The assistant explanation must be text.")
+        preview = apply_skin_patch(project.draft_skin_definition, patch)
+    except (json.JSONDecodeError, ValueError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "INVALID_SKIN_INTERPRETATION", "message": "Copilot returned an invalid skin update. No draft changes were saved."},
+        ) from error
+    changes = [
+        f"{section_name}.{property_name}"
+        for section_name, section in patch
+        if section is not None
+        for property_name in section.model_fields_set
+    ]
+    return SkinInterpretationResponse(
+        patch=patch,
+        preview=preview,
+        changed_properties=changes,
+        explanation=explanation,
+    )
 
 
 @app.post("/api/v1/projects/{project_id}/plan", response_model=Project)

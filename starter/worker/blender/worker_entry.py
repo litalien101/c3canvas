@@ -204,7 +204,7 @@ def load_job(job_path: Path) -> dict:
     if operation == "import_base_model":
         allowed_import_fields = {
             "component_id", "asset_id", "morphs", "preset_id",
-            "eye_attachment", "skin_asset_id",
+            "eye_attachment", "skin_asset_id", "skin_paint_strokes", "skin_definition",
         }
         if (
             not {"component_id", "asset_id"} <= set(arguments)
@@ -248,6 +248,14 @@ def load_job(job_path: Path) -> dict:
             or not skin_asset_is_integrity_valid(SKIN_ASSETS[skin_asset_id])
         ):
             raise ValueError("skin_asset_id must identify an installed compatible skin asset")
+        validate_skin_paint_strokes(
+            arguments.get("skin_paint_strokes", []),
+            skin_asset_id,
+        )
+        if "skin_definition" in arguments:
+            validate_skin_definition(arguments["skin_definition"])
+            if skin_asset_id is None:
+                raise ValueError("skin_definition requires a selected skin asset")
     elif operation in {
         "apply_cc3_morph_controls",
         "apply_cc3_body_preset",
@@ -800,6 +808,185 @@ def skin_asset_is_integrity_valid(asset: dict) -> bool:
     return True
 
 
+def validate_skin_paint_strokes(strokes: object, skin_asset_id: object) -> list[dict]:
+    if not isinstance(strokes, list) or len(strokes) > 500:
+        raise ValueError("skin_paint_strokes must be a list of at most 500 strokes")
+    if strokes and skin_asset_id is None:
+        raise ValueError("skin paint strokes require an installed skin asset")
+    valid_materials = {"Std_Skin_Head", "Std_Skin_Body", "Std_Skin_Arm", "Std_Skin_Leg"}
+    total_points = 0
+    for stroke in strokes:
+        if not isinstance(stroke, dict) or set(stroke) != {
+            "material", "tool", "color", "radius", "opacity", "points",
+        }:
+            raise ValueError("skin paint stroke contains unsupported fields")
+        if (
+            stroke["material"] not in valid_materials
+            or stroke["tool"] not in {"paint", "erase"}
+            or not isinstance(stroke["color"], str)
+            or not re.fullmatch(r"#[0-9A-Fa-f]{6}", stroke["color"])
+            or isinstance(stroke["radius"], bool)
+            or not isinstance(stroke["radius"], (int, float))
+            or not math.isfinite(stroke["radius"])
+            or not 0 < stroke["radius"] <= 0.1
+            or isinstance(stroke["opacity"], bool)
+            or not isinstance(stroke["opacity"], (int, float))
+            or not math.isfinite(stroke["opacity"])
+            or not 0 < stroke["opacity"] <= 1
+            or not isinstance(stroke["points"], list)
+            or not 1 <= len(stroke["points"]) <= 256
+        ):
+            raise ValueError("skin paint stroke has invalid brush settings")
+        total_points += len(stroke["points"])
+        for point in stroke["points"]:
+            if (
+                not isinstance(point, dict)
+                or set(point) != {"u", "v"}
+                or any(
+                    isinstance(point[axis], bool)
+                    or not isinstance(point[axis], (int, float))
+                    or not math.isfinite(point[axis])
+                    or not 0 <= point[axis] <= 1
+                    for axis in ("u", "v")
+                )
+            ):
+                raise ValueError("skin paint UV coordinates must be finite values from 0 to 1")
+    if total_points > 20_000:
+        raise ValueError("skin paint strokes exceed the supported point limit")
+    return strokes
+
+
+def validate_skin_definition(definition: object) -> dict:
+    if not isinstance(definition, dict) or set(definition) != {"version", "base", "surface"}:
+        raise ValueError("skin_definition contains missing or unsupported fields")
+    base = definition["base"]
+    surface = definition["surface"]
+    if (
+        definition["version"] != 1
+        or isinstance(definition["version"], bool)
+        or not isinstance(base, dict)
+        or set(base) != {"tone", "undertone"}
+        or not isinstance(surface, dict)
+        or set(surface) != {"roughness"}
+        or not isinstance(base.get("undertone"), str)
+        or base["undertone"] not in {"cool", "neutral", "warm", "olive"}
+    ):
+        raise ValueError("skin_definition contains unsupported skin properties")
+    for section, key in ((base, "tone"), (surface, "roughness")):
+        value = section[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+        ):
+            raise ValueError(f"skin_definition {key} must be a finite value from 0 to 1")
+    return definition
+
+
+def skin_material_parameters(definition: dict) -> dict:
+    validate_skin_definition(definition)
+    tone_factor = 0.7 + definition["base"]["tone"] * 0.5
+    undertone = {
+        "cool": (0.97, 0.99, 1.04),
+        "neutral": (1.0, 1.0, 1.0),
+        "warm": (1.04, 1.0, 0.96),
+        "olive": (0.99, 1.02, 0.96),
+    }[definition["base"]["undertone"]]
+    return {
+        "color_multiplier": [round(tone_factor * channel, 6) for channel in undertone],
+        "roughness_scale": round(definition["surface"]["roughness"] / 0.42, 6),
+    }
+
+
+def apply_skin_paint(bpy, strokes: list[dict]) -> dict:
+    if not strokes:
+        return {"stroke_count": 0}
+    import numpy as np
+
+    strokes_by_material: dict[str, list[dict]] = {}
+    for stroke in strokes:
+        strokes_by_material.setdefault(stroke["material"], []).append(stroke)
+    for material_name, material_strokes in strokes_by_material.items():
+        material = bpy.data.materials.get(f"{material_name}_CC3PlusFemaleSkin")
+        if material is None or not material.use_nodes or material.node_tree is None:
+            raise ValueError(f"SKIN_PAINT_MATERIAL_UNAVAILABLE: {material_name}")
+        base_color = next(
+            (node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"),
+            None,
+        )
+        if base_color is None:
+            raise ValueError(f"SKIN_PAINT_MATERIAL_UNAVAILABLE: {material_name}")
+        color_input = base_color.inputs.get("Base Color")
+        image_node = next(
+            (
+                link.from_node
+                for link in color_input.links
+                if link.from_node.type == "TEX_IMAGE" and link.from_node.image is not None
+            ),
+            None,
+        ) if color_input is not None else None
+        if image_node is None:
+            raise ValueError(f"SKIN_PAINT_TEXTURE_UNAVAILABLE: {material_name}")
+        image = image_node.image.copy()
+        image.name = f"{material_name}_Painted"
+        image_node.image = image
+        width, height = image.size
+        if width < 1 or height < 1:
+            raise ValueError(f"SKIN_PAINT_TEXTURE_INVALID: {material_name}")
+        pixels = np.empty(width * height * 4, dtype=np.float32)
+        image.pixels.foreach_get(pixels)
+        pixels = pixels.reshape((height, width, 4))
+        base_pixels = pixels.copy()
+
+        def srgb_to_linear(channel: int) -> float:
+            value = channel / 255
+            return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+        for stroke in material_strokes:
+            color = np.array([
+                srgb_to_linear(int(stroke["color"][index:index + 2], 16))
+                for index in (1, 3, 5)
+            ], dtype=np.float32)
+            radius = max(1.0, stroke["radius"] * width)
+            points = stroke["points"]
+            path = []
+            for start, end in zip(points, points[1:]):
+                x0, y0 = start["u"] * (width - 1), start["v"] * (height - 1)
+                x1, y1 = end["u"] * (width - 1), end["v"] * (height - 1)
+                distance = math.hypot(x1 - x0, y1 - y0)
+                count = max(1, math.ceil(distance / max(radius * 0.4, 1)))
+                path.extend(
+                    (
+                        x0 + (x1 - x0) * step / count,
+                        y0 + (y1 - y0) * step / count,
+                    )
+                    for step in range(count)
+                )
+            if not points or len(points) == 1:
+                path = [(points[0]["u"] * (width - 1), points[0]["v"] * (height - 1))]
+            else:
+                path.append((points[-1]["u"] * (width - 1), points[-1]["v"] * (height - 1)))
+            for center_x, center_y in path:
+                left = max(0, math.floor(center_x - radius))
+                right = min(width, math.ceil(center_x + radius + 1))
+                bottom = max(0, math.floor(center_y - radius))
+                top = min(height, math.ceil(center_y + radius + 1))
+                y, x = np.ogrid[bottom:top, left:right]
+                coverage = np.clip(radius + 0.5 - np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2), 0, 1)
+                alpha = coverage[..., None] * stroke["opacity"]
+                region = pixels[bottom:top, left:right, :3]
+                if stroke["tool"] == "erase":
+                    base_region = base_pixels[bottom:top, left:right, :3]
+                    region[:] = base_region * alpha + region * (1 - alpha)
+                else:
+                    region[:] = color * alpha + region * (1 - alpha)
+        image.pixels.foreach_set(pixels.reshape(-1))
+        image.update()
+        image.pack()
+    return {"stroke_count": len(strokes), "painted_materials": sorted(strokes_by_material)}
+
+
 def apply_skin_asset(bpy, component_id: str, asset_id: str) -> dict:
     asset = SKIN_ASSETS.get(asset_id)
     if (
@@ -856,6 +1043,75 @@ def apply_skin_asset(bpy, component_id: str, asset_id: str) -> dict:
         "asset_id": asset_id,
         "material_library_sha256": asset["material_library_sha256"],
         "material_names": sorted(material.name for material in skin_materials.values()),
+    }
+
+
+def apply_skin_definition(bpy, definition: dict) -> dict:
+    parameters = skin_material_parameters(definition)
+    colors = parameters["color_multiplier"]
+    roughness_scale = parameters["roughness_scale"]
+    materials = [
+        material
+        for material in bpy.data.materials
+        if material.name.endswith("_CC3PlusFemaleSkin")
+    ]
+    if not materials:
+        raise ValueError("SKIN_MATERIAL_UNAVAILABLE: no selected skin materials were loaded")
+    for material in materials:
+        if not material.use_nodes or material.node_tree is None:
+            raise ValueError(f"SKIN_MATERIAL_UNAVAILABLE: {material.name}")
+        shader = next(
+            (node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"),
+            None,
+        )
+        if shader is None:
+            raise ValueError(f"SKIN_SHADER_UNAVAILABLE: {material.name}")
+        base_color = shader.inputs.get("Base Color")
+        roughness_input = shader.inputs.get("Roughness")
+        if base_color is None or roughness_input is None:
+            raise ValueError(f"SKIN_SHADER_UNAVAILABLE: {material.name}")
+
+        base_links = list(base_color.links)
+        if len(base_links) > 1:
+            raise ValueError(f"SKIN_SHADER_UNSUPPORTED: multiple Base Color links on {material.name}")
+        if base_links:
+            source_socket = base_links[0].from_socket
+            multiply = material.node_tree.nodes.new("ShaderNodeMixRGB")
+            multiply.blend_type = "MULTIPLY"
+            multiply.inputs[0].default_value = 1.0
+            multiply.inputs[2].default_value = (*colors, 1.0)
+            multiply.label = "Semantic Skin Tone"
+            for link in base_links:
+                material.node_tree.links.remove(link)
+            material.node_tree.links.new(source_socket, multiply.inputs[1])
+            material.node_tree.links.new(multiply.outputs["Color"], base_color)
+        else:
+            original_color = base_color.default_value
+            base_color.default_value = tuple(
+                original_color[index] * colors[index]
+                for index in range(3)
+            ) + (original_color[3],)
+
+        roughness_links = list(roughness_input.links)
+        if len(roughness_links) > 1:
+            raise ValueError(f"SKIN_SHADER_UNSUPPORTED: multiple Roughness links on {material.name}")
+        if roughness_links:
+            source_socket = roughness_links[0].from_socket
+            multiply = material.node_tree.nodes.new("ShaderNodeMath")
+            multiply.operation = "MULTIPLY"
+            multiply.inputs[1].default_value = roughness_scale
+            multiply.label = "Semantic Skin Roughness"
+            for link in roughness_links:
+                material.node_tree.links.remove(link)
+            material.node_tree.links.new(source_socket, multiply.inputs[0])
+            material.node_tree.links.new(multiply.outputs[0], roughness_input)
+        else:
+            roughness_input.default_value *= roughness_scale
+        material.diffuse_color = (*colors, 1.0)
+    return {
+        "definition": definition,
+        "material_parameters": parameters,
+        "material_names": sorted(material.name for material in materials),
     }
 
 
@@ -1320,6 +1576,21 @@ def import_base_model(bpy, args: dict, *, clear_default_cube: bool) -> dict:
     skin_asset_id = args.get("skin_asset_id")
     if skin_asset_id is not None:
         result["skin_asset"] = apply_skin_asset(bpy, component_id, skin_asset_id)
+        result["skin_paint"] = apply_skin_paint(
+            bpy,
+            args.get("skin_paint_strokes", []),
+        )
+        result["skin_definition"] = apply_skin_definition(
+            bpy,
+            args.get(
+                "skin_definition",
+                {
+                    "version": 1,
+                    "base": {"tone": 0.62, "undertone": "neutral"},
+                    "surface": {"roughness": 0.42},
+                },
+            ),
+        )
     eye_attachment = args.get("eye_attachment")
     if eye_attachment is not None:
         body_meshes = [

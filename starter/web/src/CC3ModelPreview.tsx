@@ -1,11 +1,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLoader, useThree } from '@react-three/fiber';
+import { useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone as cloneRiggedModel } from 'three/addons/utils/SkeletonUtils.js';
-import { CanvasTexture, Material, Matrix3, Matrix4, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, NoColorSpace, Object3D, SkinnedMesh, SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
+import { CanvasTexture, Color, Material, Matrix3, Matrix4, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, NoColorSpace, Object3D, SkinnedMesh, SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import { getMorphDeltaSteps } from './morphDeltaSteps';
+import { skinMaterialParameters, type SkinDefinition } from './semanticSkin';
 
 export type CC3MorphControl = string;
 export type CC3MorphControlSpec = {
@@ -17,6 +18,15 @@ export type CC3MorphControlSpec = {
   positive_shape_key: string | null;
   negative_shape_key: string | null;
   isPreset?: boolean;
+};
+export type SkinPaintPoint = { u: number; v: number };
+export type SkinPaintStroke = {
+  material: 'Std_Skin_Head' | 'Std_Skin_Body' | 'Std_Skin_Arm' | 'Std_Skin_Leg';
+  tool: 'paint' | 'erase';
+  color: string;
+  radius: number;
+  opacity: number;
+  points: SkinPaintPoint[];
 };
 export type ModelPartKey = 'body' | 'eyes' | 'teeth' | 'tongue';
 
@@ -292,6 +302,50 @@ function clonePreviewModel(scene: Object3D, removeBaseEyes = false) {
 type SkinPreviewTextures = {
   materials: Record<string, { diffuse: string; normal: string }>;
 };
+type SkinPaintHandler = (
+  material: SkinPaintStroke['material'],
+  from: SkinPaintPoint,
+  to: SkinPaintPoint,
+  stroke: Pick<SkinPaintStroke, 'tool' | 'color' | 'radius' | 'opacity'>,
+) => void;
+type SkinPaintHandlerRef = { current: SkinPaintHandler | null };
+type SkinPaintPointerProps = {
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerCancel?: (event: ThreeEvent<PointerEvent>) => void;
+};
+
+function paintSkinTexture(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  from: SkinPaintPoint,
+  to: SkinPaintPoint,
+  stroke: Pick<SkinPaintStroke, 'tool' | 'color' | 'radius' | 'opacity'>,
+  baseCanvas: HTMLCanvasElement,
+) {
+  context.save();
+  context.lineWidth = Math.max(1, stroke.radius * 2 * width);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+  context.moveTo(from.u * width, from.v * height);
+  context.lineTo(to.u * width, to.v * height);
+  if (stroke.tool === 'erase') {
+    context.globalAlpha = stroke.opacity;
+    context.globalCompositeOperation = 'destination-out';
+    context.stroke();
+    context.globalCompositeOperation = 'destination-over';
+    context.globalAlpha = 1;
+    context.drawImage(baseCanvas, 0, 0);
+  } else {
+    context.globalAlpha = stroke.opacity;
+    context.strokeStyle = stroke.color;
+    context.stroke();
+  }
+  context.restore();
+}
 
 function configureSkinPreviewTexture(
   texture: Texture,
@@ -318,13 +372,19 @@ function configureSkinPreviewTexture(
 function SkinMaterialPreview({
   model,
   skinPreview,
+  skinDefinition,
   ownedTextures,
   onPreviewError,
+  paintStrokes,
+  paintHandlerRef,
 }: {
   model: Object3D;
   skinPreview: SkinPreviewTextures;
+  skinDefinition: SkinDefinition;
   ownedTextures: Set<Texture>;
   onPreviewError: (message: string) => void;
+  paintStrokes: SkinPaintStroke[];
+  paintHandlerRef: SkinPaintHandlerRef;
 }) {
   const entries = useMemo(() => Object.entries(skinPreview.materials), [skinPreview]);
   const textureUrls = useMemo(
@@ -339,8 +399,17 @@ function SkinMaterialPreview({
       map: Texture | null;
       normalMap: Texture | null;
       normalScale: MeshStandardMaterial['normalScale'];
+      color: Color;
+      roughness: number;
       textures: Texture[];
     }[] = [];
+    const paintTargets = new Map<SkinPaintStroke['material'], {
+      context: CanvasRenderingContext2D;
+      baseCanvas: HTMLCanvasElement;
+      texture: CanvasTexture;
+      width: number;
+      height: number;
+    }>();
     const matched = new Set<string>();
     model.traverse((object) => {
       if (!(object instanceof Mesh)) return;
@@ -352,38 +421,109 @@ function SkinMaterialPreview({
         const diffuseSource = loadedTextures[entryIndex * 2];
         const normalSource = loadedTextures[entryIndex * 2 + 1];
         if (!diffuseSource || !normalSource) continue;
+        const sourceMap = material.map;
+        const sourceNormalMap = material.normalMap;
+        const sourceNormalScale = material.normalScale.clone();
+        const sourceColor = material.color.clone();
+        const sourceRoughness = material.roughness;
         const previewDiffuse = createPreviewTexture(diffuseSource);
         const previewNormal = createPreviewTexture(normalSource);
         const diffuse = previewDiffuse === diffuseSource ? diffuseSource.clone() : previewDiffuse;
         const normal = previewNormal === normalSource ? normalSource.clone() : previewNormal;
-        configureSkinPreviewTexture(diffuse, material.map, SRGBColorSpace);
-        configureSkinPreviewTexture(normal, material.normalMap, NoColorSpace);
+        configureSkinPreviewTexture(diffuse, sourceMap, SRGBColorSpace);
+        configureSkinPreviewTexture(normal, sourceNormalMap, NoColorSpace);
+        const paintMaterial = materialName as SkinPaintStroke['material'];
+        let paintTexture: CanvasTexture | null = null;
+        if (paintMaterial in skinPreview.materials) {
+          const image = diffuse.image;
+          if (!(image instanceof HTMLImageElement
+            || image instanceof HTMLCanvasElement
+            || (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap))) {
+            throw new Error(`The browser could not prepare the ${paintMaterial} paint surface.`);
+          }
+          const baseCanvas = document.createElement('canvas');
+          baseCanvas.width = image.width;
+          baseCanvas.height = image.height;
+          const baseContext = baseCanvas.getContext('2d');
+          if (!baseContext) throw new Error('The browser could not prepare the skin paint surface.');
+          baseContext.drawImage(image, 0, 0, baseCanvas.width, baseCanvas.height);
+          const canvas = document.createElement('canvas');
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('The browser could not prepare the skin paint surface.');
+          context.drawImage(baseCanvas, 0, 0);
+          paintTexture = new CanvasTexture(canvas);
+          configureSkinPreviewTexture(paintTexture, sourceMap, SRGBColorSpace);
+          paintTexture.flipY = false;
+          for (const stroke of paintStrokes) {
+            if (stroke.material !== paintMaterial) continue;
+            const first = stroke.points[0];
+            paintSkinTexture(context, canvas.width, canvas.height, first, first, stroke, baseCanvas);
+            for (let pointIndex = 1; pointIndex < stroke.points.length; pointIndex += 1) {
+              paintSkinTexture(
+                context,
+                canvas.width,
+                canvas.height,
+                stroke.points[pointIndex - 1],
+                stroke.points[pointIndex],
+                stroke,
+                baseCanvas,
+              );
+            }
+          }
+          paintTexture.needsUpdate = true;
+          diffuse.dispose();
+          ownedTextures.add(paintTexture);
+          paintTargets.set(paintMaterial, {
+            context,
+            baseCanvas,
+            texture: paintTexture,
+            width: canvas.width,
+            height: canvas.height,
+          });
+        }
         replaced.push({
           material,
-          map: material.map,
-          normalMap: material.normalMap,
-          normalScale: material.normalScale.clone(),
-          textures: [diffuse, normal],
+          map: sourceMap,
+          normalMap: sourceNormalMap,
+          normalScale: sourceNormalScale,
+          color: sourceColor,
+          roughness: sourceRoughness,
+          textures: [diffuse, normal, ...(paintTexture ? [paintTexture] : [])],
         });
-        material.map = diffuse;
+        material.map = paintTexture ?? diffuse;
         material.normalMap = normal;
         material.normalScale.multiplyScalar(0.35);
+        const parameters = skinMaterialParameters(skinDefinition);
+        material.color.multiply(new Color(...parameters.colorMultiplier));
+        material.roughness = Math.min(1, Math.max(0, sourceRoughness * parameters.roughnessScale));
         material.needsUpdate = true;
         ownedTextures.add(diffuse);
         ownedTextures.add(normal);
         matched.add(materialName);
       }
     });
+    const paintHandler: SkinPaintHandler = (paintMaterial, from, to, stroke) => {
+      const target = paintTargets.get(paintMaterial);
+      if (!target) return;
+      paintSkinTexture(target.context, target.width, target.height, from, to, stroke, target.baseCanvas);
+      target.texture.needsUpdate = true;
+    };
+    paintHandlerRef.current = paintHandler;
     onPreviewError(
       matched.size === entries.length
         ? ''
         : `The skin preview could not find all expected materials (${[...matched].join(', ') || 'none'}).`,
     );
     return () => {
-      for (const { material, map, normalMap, normalScale, textures } of replaced) {
+      if (paintHandlerRef.current === paintHandler) paintHandlerRef.current = null;
+      for (const { material, map, normalMap, normalScale, color, roughness, textures } of replaced) {
         material.map = map;
         material.normalMap = normalMap;
         material.normalScale.copy(normalScale);
+        material.color.copy(color);
+        material.roughness = roughness;
         material.needsUpdate = true;
         for (const texture of textures) {
           ownedTextures.delete(texture);
@@ -391,7 +531,7 @@ function SkinMaterialPreview({
         }
       }
     };
-  }, [entries, loadedTextures, model, onPreviewError, ownedTextures, textureUrls]);
+  }, [entries, loadedTextures, model, onPreviewError, ownedTextures, paintHandlerRef, paintStrokes, skinDefinition, skinPreview.materials, textureUrls]);
   return null;
 }
 
@@ -664,6 +804,7 @@ export function CC3ModelPreview({
   previewUrl,
   eyePreviewUrl,
   skinPreview,
+  skinDefinition,
   morphPreviewUrl,
   morphDeltaBaseUrl,
   morphDeltaSha256,
@@ -674,10 +815,18 @@ export function CC3ModelPreview({
   controls,
   onClientMorphPreviewState,
   onSkinPreviewError,
+  skinPaintEnabled,
+  skinPaintColor,
+  skinPaintTool,
+  skinPaintSize,
+  skinPaintOpacity,
+  skinPaintStrokes,
+  onSkinPaintStrokes,
 }: {
   previewUrl: string;
   eyePreviewUrl: string | null;
   skinPreview: SkinPreviewTextures | null;
+  skinDefinition: SkinDefinition;
   morphPreviewUrl: string | null;
   morphDeltaBaseUrl: string | null;
   morphDeltaSha256: string | null;
@@ -688,15 +837,136 @@ export function CC3ModelPreview({
   controls: CC3MorphControlSpec[];
   onClientMorphPreviewState: (status: MorphPreviewStatus, error: string) => void;
   onSkinPreviewError: (message: string) => void;
+  skinPaintEnabled: boolean;
+  skinPaintColor: string;
+  skinPaintTool: 'paint' | 'erase';
+  skinPaintSize: number;
+  skinPaintOpacity: number;
+  skinPaintStrokes: SkinPaintStroke[];
+  onSkinPaintStrokes: (strokes: SkinPaintStroke[]) => void;
 }) {
   const gltf = useLoader(GLTFLoader, previewUrl, configureGltfLoader);
   const invalidate = useThree((state) => state.invalidate);
+  const rendererDomElement = useThree((state) => state.gl.domElement);
   const [eyePreviewReady, setEyePreviewReady] = useState(false);
+  const paintHandlerRef = useRef<SkinPaintHandler | null>(null);
+  const activePaintStroke = useRef<{
+    pointerId: number;
+    stroke: SkinPaintStroke;
+    strokes: SkinPaintStroke[];
+    lastPoint: SkinPaintPoint;
+  } | null>(null);
   const markEyePreviewReady = useCallback(() => setEyePreviewReady(true), []);
   const markEyePresetError = useCallback(
     (error: string) => onClientMorphPreviewState('error', error),
     [onClientMorphPreviewState],
   );
+  const getPaintMaterial = useCallback((event: ThreeEvent<PointerEvent>) => {
+    if (!(event.object instanceof Mesh)) return null;
+    const objectMaterials = Array.isArray(event.object.material) ? event.object.material : [event.object.material];
+    const materialName = objectMaterials[event.face?.materialIndex ?? 0]?.name.replace(/\.\d+$/, '');
+    return materialName === 'Std_Skin_Head'
+      || materialName === 'Std_Skin_Body'
+      || materialName === 'Std_Skin_Arm'
+      || materialName === 'Std_Skin_Leg'
+      ? materialName
+      : null;
+  }, []);
+  const finishSkinPaintStroke = useCallback(() => {
+    const active = activePaintStroke.current;
+    if (!active) return;
+    activePaintStroke.current = null;
+    onSkinPaintStrokes(active.strokes);
+  }, [onSkinPaintStrokes]);
+  useEffect(() => {
+    const finishOnPointerEnd = (event: PointerEvent) => {
+      if (activePaintStroke.current?.pointerId === event.pointerId) finishSkinPaintStroke();
+    };
+    rendererDomElement.addEventListener('pointerup', finishOnPointerEnd);
+    rendererDomElement.addEventListener('pointercancel', finishOnPointerEnd);
+    return () => {
+      rendererDomElement.removeEventListener('pointerup', finishOnPointerEnd);
+      rendererDomElement.removeEventListener('pointercancel', finishOnPointerEnd);
+    };
+  }, [finishSkinPaintStroke, rendererDomElement]);
+  const handleSkinPaintPointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
+    if (!skinPaintEnabled || event.button !== 0 || !event.uv) return;
+    const material = getPaintMaterial(event);
+    if (!material) return;
+    event.stopPropagation();
+    const point = { u: event.uv.x, v: event.uv.y };
+    const stroke: SkinPaintStroke = {
+      material,
+      tool: skinPaintTool,
+      color: skinPaintColor,
+      radius: skinPaintSize / 2048,
+      opacity: skinPaintOpacity / 100,
+      points: [point],
+    };
+    activePaintStroke.current = { pointerId: event.pointerId, stroke, strokes: [stroke], lastPoint: point };
+    if (event.nativeEvent.target instanceof HTMLCanvasElement) {
+      event.nativeEvent.target.setPointerCapture(event.pointerId);
+    }
+    paintHandlerRef.current?.(material, point, point, stroke);
+  }, [getPaintMaterial, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
+  const handleSkinPaintPointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
+    const active = activePaintStroke.current;
+    if (!skinPaintEnabled || !active || active.pointerId !== event.pointerId || !event.uv) return;
+    const material = getPaintMaterial(event);
+    if (!material) return;
+    event.stopPropagation();
+    const point = { u: event.uv.x, v: event.uv.y };
+    if (material !== active.stroke.material) {
+      const stroke: SkinPaintStroke = {
+        material,
+        tool: skinPaintTool,
+        color: skinPaintColor,
+        radius: skinPaintSize / 2048,
+        opacity: skinPaintOpacity / 100,
+        points: [point],
+      };
+      active.stroke = stroke;
+      active.strokes.push(stroke);
+      active.lastPoint = point;
+      paintHandlerRef.current?.(material, point, point, stroke);
+      return;
+    }
+    if (active.stroke.points.length >= 256) {
+      const stroke: SkinPaintStroke = {
+        material,
+        tool: skinPaintTool,
+        color: skinPaintColor,
+        radius: skinPaintSize / 2048,
+        opacity: skinPaintOpacity / 100,
+        points: [point],
+      };
+      active.stroke = stroke;
+      active.strokes.push(stroke);
+      active.lastPoint = point;
+      paintHandlerRef.current?.(material, point, point, stroke);
+      return;
+    }
+    active.stroke.points.push(point);
+    paintHandlerRef.current?.(material, active.lastPoint, point, active.stroke);
+    active.lastPoint = point;
+  }, [finishSkinPaintStroke, getPaintMaterial, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
+  const handleSkinPaintPointerUp = useCallback((event: ThreeEvent<PointerEvent>) => {
+    if (activePaintStroke.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    if (event.nativeEvent.target instanceof HTMLCanvasElement
+      && event.nativeEvent.target.hasPointerCapture(event.pointerId)) {
+      event.nativeEvent.target.releasePointerCapture(event.pointerId);
+    }
+    finishSkinPaintStroke();
+  }, [finishSkinPaintStroke]);
+  const paintPointerProps: SkinPaintPointerProps = skinPaintEnabled
+    ? {
+      onPointerDown: handleSkinPaintPointerDown,
+      onPointerMove: handleSkinPaintPointerMove,
+      onPointerUp: handleSkinPaintPointerUp,
+      onPointerCancel: handleSkinPaintPointerUp,
+    }
+    : {};
   const previewVisibility = useMemo(
     () => eyePreviewReady ? { ...visible, eyes: false } : visible,
     [eyePreviewReady, visible],
@@ -741,13 +1011,16 @@ export function CC3ModelPreview({
   return <>
     {morphPreviewUrl !== null && loadedMorphPreviewUrl === morphPreviewUrl
       ? null
-      : <primitive object={model} />}
+      : <primitive object={model} {...paintPointerProps} />}
     {skinPreview && <Suspense fallback={null}>
       <SkinMaterialPreview
         model={model}
         skinPreview={skinPreview}
+        skinDefinition={skinDefinition}
         ownedTextures={textures}
         onPreviewError={onSkinPreviewError}
+        paintStrokes={skinPaintStrokes}
+        paintHandlerRef={paintHandlerRef}
       />
     </Suspense>}
     {morphPreviewUrl && <Suspense fallback={null}>
@@ -755,6 +1028,7 @@ export function CC3ModelPreview({
         key={`${morphPreviewUrl}:${morphDeltaSha256 ?? ''}`}
         previewUrl={morphPreviewUrl}
         skinPreview={skinPreview}
+        skinDefinition={skinDefinition}
         onSkinPreviewError={onSkinPreviewError}
         morphDeltaBaseUrl={morphDeltaBaseUrl}
         morphDeltaSha256={morphDeltaSha256}
@@ -765,6 +1039,9 @@ export function CC3ModelPreview({
         controls={controls}
         onLoaded={markMorphPreviewLoaded}
         onStatus={onClientMorphPreviewState}
+        paintStrokes={skinPaintStrokes}
+        paintHandlerRef={paintHandlerRef}
+        paintPointerProps={paintPointerProps}
       />
     </Suspense>}
     {eyePreviewUrl && visible.eyes && <Suspense fallback={null}>
@@ -1480,6 +1757,7 @@ function applyPreviewState(
 function MorphableCC3Preview({
   previewUrl,
   skinPreview,
+  skinDefinition,
   onSkinPreviewError,
   morphDeltaBaseUrl,
   morphDeltaSha256,
@@ -1490,9 +1768,13 @@ function MorphableCC3Preview({
   controls,
   onLoaded,
   onStatus,
+  paintStrokes,
+  paintHandlerRef,
+  paintPointerProps,
 }: {
   previewUrl: string;
   skinPreview: SkinPreviewTextures | null;
+  skinDefinition: SkinDefinition;
   onSkinPreviewError: (message: string) => void;
   morphDeltaBaseUrl: string | null;
   morphDeltaSha256: string | null;
@@ -1503,6 +1785,9 @@ function MorphableCC3Preview({
   controls: CC3MorphControlSpec[];
   onLoaded: (url: string) => void;
   onStatus: (status: MorphPreviewStatus, error: string) => void;
+  paintStrokes: SkinPaintStroke[];
+  paintHandlerRef: SkinPaintHandlerRef;
+  paintPointerProps: SkinPaintPointerProps;
 }) {
   const gltf = useLoader(GLTFLoader, previewUrl, configureGltfLoader);
   const invalidate = useThree((state) => state.invalidate);
@@ -1706,13 +1991,16 @@ function MorphableCC3Preview({
   }, [materials, model, textures]);
 
   return <>
-    <primitive object={model} />
+    <primitive object={model} {...paintPointerProps} />
     {skinPreview && <Suspense fallback={null}>
       <SkinMaterialPreview
         model={model}
         skinPreview={skinPreview}
+        skinDefinition={skinDefinition}
         ownedTextures={textures}
         onPreviewError={onSkinPreviewError}
+        paintStrokes={paintStrokes}
+        paintHandlerRef={paintHandlerRef}
       />
     </Suspense>}
   </>;

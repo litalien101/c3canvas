@@ -153,15 +153,62 @@ def test_skin_assets_are_integrity_checked_and_persist_on_compatible_drafts(monk
     assert saved.status_code == 200, saved.text
     assert saved.json()["draft_appearance"]["skin_asset_id"] == asset["id"]
     assert saved.json()["scene_version"] == 0
+    paint_stroke = {
+        "material": "Std_Skin_Head",
+        "tool": "paint",
+        "color": "#c84051",
+        "radius": 0.01,
+        "opacity": 0.75,
+        "points": [{"u": 0.25, "v": 0.4}, {"u": 0.3, "v": 0.45}],
+    }
+    painted = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={
+            "eye_asset_id": None,
+            "body_preset_id": None,
+            "skin_asset_id": asset["id"],
+            "skin_paint_strokes": [paint_stroke],
+        },
+    )
+    assert painted.status_code == 200, painted.text
+    assert painted.json()["draft_skin_paint_strokes"] == [paint_stroke]
     reopened = client.get(f"/api/v1/projects/{project['id']}")
     assert reopened.status_code == 200
     assert reopened.json()["draft_appearance"]["skin_asset_id"] == asset["id"]
+    assert reopened.json()["draft_skin_paint_strokes"] == [paint_stroke]
     legacy_update = client.patch(
         f"/api/v1/projects/{project['id']}/draft-appearance",
         json={"eye_asset_id": None, "body_preset_id": None},
     )
     assert legacy_update.status_code == 200
     assert legacy_update.json()["draft_appearance"]["skin_asset_id"] == asset["id"]
+    assert legacy_update.json()["draft_skin_paint_strokes"] == [paint_stroke]
+    invalid_stroke = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={
+            "eye_asset_id": None,
+            "body_preset_id": None,
+            "skin_asset_id": asset["id"],
+            "skin_paint_strokes": [{**paint_stroke, "points": [{"u": 1.1, "v": 0.5}]}],
+        },
+    )
+    assert invalid_stroke.status_code == 422
+    invalid_tool = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={
+            "eye_asset_id": None,
+            "body_preset_id": None,
+            "skin_asset_id": asset["id"],
+            "skin_paint_strokes": [{**paint_stroke, "tool": "smudge"}],
+        },
+    )
+    assert invalid_tool.status_code == 422
+    cleared_skin = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={"eye_asset_id": None, "body_preset_id": None, "skin_asset_id": None},
+    )
+    assert cleared_skin.status_code == 200
+    assert cleared_skin.json()["draft_skin_paint_strokes"] == []
 
     incompatible = client.post(
         "/api/v1/projects",
@@ -173,6 +220,92 @@ def test_skin_assets_are_integrity_checked_and_persist_on_compatible_drafts(monk
     )
     assert rejected.status_code == 422
     assert rejected.json()["detail"]["code"] == "SKIN_ASSET_UNAVAILABLE"
+
+
+def test_semantic_skin_draft_is_versioned_and_ai_interpretation_requires_apply(monkeypatch):
+    project = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Semantic Skin Draft",
+            "base_model_asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
+        },
+    ).json()
+    appearance = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={"eye_asset_id": None, "body_preset_id": None, "skin_asset_id": "skin_cc3plus_female_1"},
+    )
+    assert appearance.status_code == 200, appearance.text
+    initial = appearance.json()["draft_skin_definition"]
+
+    def unexpected_blender_call(**_kwargs):
+        pytest.fail("Semantic skin draft edits must not invoke Blender")
+
+    monkeypatch.setattr(main, "run_blender_operation", unexpected_blender_call)
+    edited = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-skin",
+        json={
+            "expected_draft_skin_revision": appearance.json()["draft_skin_revision"],
+            "skin_definition": {
+                "version": 1,
+                "base": {"tone": 0.8, "undertone": "olive"},
+                "surface": {"roughness": 0.3},
+            },
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["draft_skin_revision"] == appearance.json()["draft_skin_revision"] + 1
+    assert edited.json()["draft_skin_definition"]["base"] == {"tone": 0.8, "undertone": "olive"}
+    assert edited.json()["draft_skin_definition"]["surface"] == {"roughness": 0.3}
+    reopened = client.get(f"/api/v1/projects/{project['id']}").json()
+    assert reopened["draft_skin_definition"] == edited.json()["draft_skin_definition"]
+    stale = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-skin",
+        json={
+            "expected_draft_skin_revision": appearance.json()["draft_skin_revision"],
+            "skin_definition": initial,
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "STALE_SKIN_DRAFT"
+    invalid = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-skin",
+        json={
+            "expected_draft_skin_revision": edited.json()["draft_skin_revision"],
+            "skin_definition": {
+                "version": 1,
+                "base": {"tone": 1.1, "undertone": "neutral"},
+                "surface": {"roughness": 0.3},
+            },
+        },
+    )
+    assert invalid.status_code == 422
+
+    async def interpret(**_kwargs):
+        return json.dumps({
+            "patch": {"base": {"tone": 0.7}},
+            "explanation": "A modest tone adjustment is supported.",
+        })
+
+    monkeypatch.setattr(main, "generate_copilot_reply", interpret)
+    proposal = client.post(
+        f"/api/v1/projects/{project['id']}/skin/interpret",
+        json={"prompt": "Make the skin a little lighter"},
+    )
+    assert proposal.status_code == 200, proposal.text
+    assert proposal.json()["changed_properties"] == ["base.tone"]
+    assert proposal.json()["preview"]["base"] == {"tone": 0.7, "undertone": "olive"}
+    assert client.get(f"/api/v1/projects/{project['id']}").json()["draft_skin_definition"] == edited.json()["draft_skin_definition"]
+
+    async def malformed(**_kwargs):
+        return '{"patch":{"base":{"freckles":true}},"explanation":"Unsupported."}'
+
+    monkeypatch.setattr(main, "generate_copilot_reply", malformed)
+    rejected = client.post(
+        f"/api/v1/projects/{project['id']}/skin/interpret",
+        json={"prompt": "Add freckles"},
+    )
+    assert rejected.status_code == 502
+    assert rejected.json()["detail"]["code"] == "INVALID_SKIN_INTERPRETATION"
 
 
 def test_standalone_eye_modeling_operation_is_rejected(monkeypatch):
@@ -610,6 +743,13 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                         f"{name}_CC3PlusFemaleSkin" for name in skin["materials"]
                     ),
                 }
+                if arguments.get("skin_paint_strokes"):
+                    result["skin_paint"] = {
+                        "stroke_count": len(arguments["skin_paint_strokes"]),
+                        "painted_materials": sorted({
+                            stroke["material"] for stroke in arguments["skin_paint_strokes"]
+                        }),
+                    }
         elif operation == "apply_cc3_body_preset":
             result = {
                 "component_id": arguments["component_id"],
@@ -656,6 +796,14 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
             "eye_asset_id": "eye-normal-1",
             "body_preset_id": None,
             "skin_asset_id": "skin_cc3plus_female_1",
+            "skin_paint_strokes": [{
+                "material": "Std_Skin_Body",
+                "tool": "paint",
+                "color": "#b87357",
+                "radius": 0.008,
+                "opacity": 0.6,
+                "points": [{"u": 0.2, "v": 0.5}, {"u": 0.25, "v": 0.55}],
+            }],
         },
     )
     assert appearance.status_code == 200, appearance.text
@@ -684,6 +832,7 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                 "asset_id": asset_id,
                 "preset_id": preset_id,
                 "skin_asset_id": "skin_cc3plus_female_1",
+                "skin_paint_strokes": appearance.json()["draft_skin_paint_strokes"],
             },
         },
     )
