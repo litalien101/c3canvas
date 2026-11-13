@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { applyElvenEarPreset, ELVEN_EAR_PRESET_MORPHS } from '../src/characterMorphPresets.ts';
+import {
+  applyElvenEarPreset,
+  ELVEN_EAR_PRESET_MORPHS,
+  normalizeCharacterPresetSelection,
+  selectCharacterPreset,
+} from '../src/characterMorphPresets.ts';
 
 const cc5Manifest = JSON.parse(
   readFileSync(new URL('../../shared/cc5_rlcc3plus_manifest.json', import.meta.url), 'utf8'),
@@ -36,5 +41,41 @@ test('applying elven ears preserves unrelated morph values without mutating the 
   assert.deepEqual(
     Object.keys(updated).filter((id) => id in ELVEN_EAR_PRESET_MORPHS).sort(),
     Object.keys(ELVEN_EAR_PRESET_MORPHS).sort(),
+  );
+});
+
+test('selecting a head preset preserves the active body preset', () => {
+  const withBodyPreset = selectCharacterPreset(
+    { body: null, head: null },
+    'body',
+    'female_neutral_body_preset_1',
+  );
+  const withBothPresets = selectCharacterPreset(
+    withBodyPreset,
+    'head',
+    'female_neutral_head_preset_1',
+  );
+
+  assert.deepEqual(withBothPresets, {
+    body: 'female_neutral_body_preset_1',
+    head: 'female_neutral_head_preset_1',
+  });
+  assert.deepEqual(withBodyPreset, {
+    body: 'female_neutral_body_preset_1',
+    head: null,
+  });
+});
+
+test('legacy head presets stored in the body slot normalize to the head slot', () => {
+  assert.deepEqual(
+    normalizeCharacterPresetSelection(
+      [
+        { id: 'female_neutral_body_preset_1', kind: 'body' },
+        { id: 'female_neutral_head_preset_1', kind: 'head' },
+      ],
+      'female_neutral_head_preset_1',
+      null,
+    ),
+    { body: null, head: 'female_neutral_head_preset_1' },
   );
 });

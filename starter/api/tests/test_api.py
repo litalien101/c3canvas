@@ -67,13 +67,25 @@ def test_eye_draft_selection_persists_without_invoking_blender(monkeypatch):
     assert saved["draft_appearance"] == {
         "eye_asset_id": "eye-normal-1",
         "body_preset_id": None,
+        "head_preset_id": None,
         "skin_asset_id": None,
     }
     assert saved["scene_version"] == 0
     assert saved["components"] == []
 
 
+def test_hair_workflows_are_not_exposed_by_api():
+    schema = app.openapi()
+
+    assert not any("hair" in path for path in schema["paths"])
+    assert "HairAsset" not in schema["components"]["schemas"]
+    assert "hair_asset_id" not in main.DraftAppearanceUpdateRequest.model_fields
+    assert "generate_cc5_hair" not in str(schema["components"]["schemas"])
+    assert "attach_pinned_hair_asset" not in str(schema["components"]["schemas"])
+
+
 def test_skin_assets_are_integrity_checked_and_persist_on_compatible_drafts(monkeypatch):
+    assert main.SkinPaintPoint(u=0.25, v=0.4).pressure == 1
     assets_response = client.get("/api/v1/assets/skins")
     assert assets_response.status_code == 200
     assets = assets_response.json()
@@ -159,7 +171,10 @@ def test_skin_assets_are_integrity_checked_and_persist_on_compatible_drafts(monk
         "color": "#c84051",
         "radius": 0.01,
         "opacity": 0.75,
-        "points": [{"u": 0.25, "v": 0.4}, {"u": 0.3, "v": 0.45}],
+        "points": [
+            {"u": 0.25, "v": 0.4, "pressure": 0.25},
+            {"u": 0.3, "v": 0.45, "pressure": 0.8},
+        ],
     }
     painted = client.patch(
         f"/api/v1/projects/{project['id']}/draft-appearance",
@@ -193,6 +208,19 @@ def test_skin_assets_are_integrity_checked_and_persist_on_compatible_drafts(monk
         },
     )
     assert invalid_stroke.status_code == 422
+    invalid_pressure = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-appearance",
+        json={
+            "eye_asset_id": None,
+            "body_preset_id": None,
+            "skin_asset_id": asset["id"],
+            "skin_paint_strokes": [{
+                **paint_stroke,
+                "points": [{"u": 0.25, "v": 0.4, "pressure": 1.1}],
+            }],
+        },
+    )
+    assert invalid_pressure.status_code == 422
     invalid_tool = client.patch(
         f"/api/v1/projects/{project['id']}/draft-appearance",
         json={
@@ -246,14 +274,24 @@ def test_semantic_skin_draft_is_versioned_and_ai_interpretation_requires_apply(m
         json={
             "expected_draft_skin_revision": appearance.json()["draft_skin_revision"],
             "skin_definition": {
-                "version": 1,
+                "version": 2,
                 "base": {"tone": 0.8, "undertone": "olive"},
                 "surface": {"roughness": 0.3},
+                "features": {"freckles": {
+                    "enabled": False,
+                    "density": 0.18,
+                    "size": 0.45,
+                    "strength": 0.35,
+                    "color": "#80513F",
+                    "seed": 24301,
+                    "pattern": "natural",
+                }},
             },
         },
     )
     assert edited.status_code == 200, edited.text
     assert edited.json()["draft_skin_revision"] == appearance.json()["draft_skin_revision"] + 1
+    assert edited.json()["draft_skin_definition"]["version"] == 2
     assert edited.json()["draft_skin_definition"]["base"] == {"tone": 0.8, "undertone": "olive"}
     assert edited.json()["draft_skin_definition"]["surface"] == {"roughness": 0.3}
     reopened = client.get(f"/api/v1/projects/{project['id']}").json()
@@ -272,37 +310,69 @@ def test_semantic_skin_draft_is_versioned_and_ai_interpretation_requires_apply(m
         json={
             "expected_draft_skin_revision": edited.json()["draft_skin_revision"],
             "skin_definition": {
-                "version": 1,
+                "version": 2,
                 "base": {"tone": 1.1, "undertone": "neutral"},
                 "surface": {"roughness": 0.3},
+                "features": edited.json()["draft_skin_definition"]["features"],
             },
         },
     )
     assert invalid.status_code == 422
 
+    legacy = client.patch(
+        f"/api/v1/projects/{project['id']}/draft-skin",
+        json={
+            "expected_draft_skin_revision": edited.json()["draft_skin_revision"],
+            "skin_definition": {
+                "version": 1,
+                "base": {"tone": 0.8, "undertone": "olive"},
+                "surface": {"roughness": 0.3},
+            },
+        },
+    )
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["draft_skin_definition"]["version"] == 2
+    assert legacy.json()["draft_skin_definition"]["features"]["freckles"]["enabled"] is False
+
     async def interpret(**_kwargs):
         return json.dumps({
-            "patch": {"base": {"tone": 0.7}},
-            "explanation": "A modest tone adjustment is supported.",
+            "patch": {"features": {"freckles": {
+                "enabled": True,
+                "density": 0.3,
+                "color": "#704530",
+            }}},
+            "explanation": "Subtle deterministic freckles are proposed for the head UV map.",
         })
 
     monkeypatch.setattr(main, "generate_copilot_reply", interpret)
     proposal = client.post(
         f"/api/v1/projects/{project['id']}/skin/interpret",
-        json={"prompt": "Make the skin a little lighter"},
+        json={"prompt": "Add subtle freckles"},
     )
     assert proposal.status_code == 200, proposal.text
-    assert proposal.json()["changed_properties"] == ["base.tone"]
-    assert proposal.json()["preview"]["base"] == {"tone": 0.7, "undertone": "olive"}
-    assert client.get(f"/api/v1/projects/{project['id']}").json()["draft_skin_definition"] == edited.json()["draft_skin_definition"]
+    assert proposal.json()["changed_properties"] == [
+        "features.freckles.color",
+        "features.freckles.density",
+        "features.freckles.enabled",
+    ]
+    assert proposal.json()["preview"]["features"]["freckles"] == {
+        "enabled": True,
+        "density": 0.3,
+        "size": 0.45,
+        "strength": 0.35,
+        "color": "#704530",
+        "seed": 24301,
+        "pattern": "natural",
+    }
+    assert client.get(f"/api/v1/projects/{project['id']}").json()["draft_skin_definition"] == legacy.json()["draft_skin_definition"]
 
     async def malformed(**_kwargs):
-        return '{"patch":{"base":{"freckles":true}},"explanation":"Unsupported."}'
+        return '{"patch":{"features":{"freckles":{"density":2}}},"explanation":"Unsupported."}'
 
     monkeypatch.setattr(main, "generate_copilot_reply", malformed)
     rejected = client.post(
         f"/api/v1/projects/{project['id']}/skin/interpret",
-        json={"prompt": "Add freckles"},
+        json={"prompt": "Make the freckles impossibly dense"},
     )
     assert rejected.status_code == 502
     assert rejected.json()["detail"]["code"] == "INVALID_SKIN_INTERPRETATION"
@@ -338,12 +408,22 @@ def test_standalone_eye_modeling_operation_is_rejected(monkeypatch):
 def isolate_database(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "REPOSITORY", SQLiteProjectRepository(tmp_path / "test.sqlite"))
     monkeypatch.setattr(main, "ASSET_STORE", main.LocalAssetStore(tmp_path / "assets"))
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("ALLOW_ACCOUNT_REGISTRATION", "true")
     monkeypatch.setenv("COMODEL_COPILOT_BRIDGE_CONFIG", str(tmp_path / "missing-copilot-bridge.json"))
     blender = shutil.which("blender")
     if blender:
         monkeypatch.setenv("COMODEL_BLENDER_EXECUTABLE", blender)
     else:
         monkeypatch.delenv("COMODEL_BLENDER_EXECUTABLE", raising=False)
+    client.cookies.clear()
+    client.headers.pop("X-CSRF-Token", None)
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"username": "primary-user", "password": "a-correct-horse-battery"},
+    )
+    assert response.status_code == 201, response.text
+    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
 
 
 def test_health_explicitly_reports_blender_and_sqlite_persistence():
@@ -671,14 +751,30 @@ def test_installed_female_startup_preview_is_pinned_static_and_smaller():
 def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
     asset_id = "character_cc5_rlcc3plus_all_morphs_v1"
     manifest = main.CC3_MORPH_MANIFESTS[asset_id]
-    preset_id = "female_neutral_head_preset_9"
+    body_preset_id = "female_neutral_body_preset_4"
+    head_preset_id = "female_neutral_head_preset_9"
+    selected_preset_ids = {
+        "body": body_preset_id,
+        "head": head_preset_id,
+    }
     monkeypatch.setattr(
         main,
         "cc5_body_preset_info",
-        lambda candidate: {"id": candidate} if candidate == preset_id else None,
+        lambda candidate: {"id": candidate}
+        if candidate in {body_preset_id, head_preset_id}
+        else None,
     )
+    worker_calls = []
 
     def fake_blender_operation(*, operation, arguments, **_kwargs):
+        call = {
+            "operation": operation,
+            "scope_component_ids": _kwargs.get("scope_component_ids", []),
+            "dependency_component_ids": _kwargs.get("dependency_component_ids", []),
+        }
+        if "preset_ids" in arguments:
+            call["preset_ids"] = arguments["preset_ids"]
+        worker_calls.append(call)
         if operation == "import_base_model":
             mesh_results = [
                 {"name": name, "vertex_count": 1, "polygon_count": 1}
@@ -700,7 +796,10 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                 "component_vertex_count": manifest["component_vertex_count"],
                 "component_shape_key_count": (
                     manifest["component_shape_key_count"]
-                    + (manifest["mesh_count"] if arguments.get("preset_id") else 0)
+                    + manifest["mesh_count"] * sum(
+                        preset_id is not None
+                        for preset_id in arguments.get("preset_ids", {}).values()
+                    )
                 ),
                 "neutralized_morph_key_count": manifest["shape_key_operations"],
                 "morph_control_names": [control["id"] for control in manifest["controls"]],
@@ -714,10 +813,11 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                 "warning": "CC5 source loaded",
                 "scene_structure_validation": {"status": "pass"},
             }
-            if arguments.get("preset_id") is not None:
+            preset_ids = arguments.get("preset_ids", {"body": None, "head": None})
+            if any(preset_ids.values()):
                 result["body_preset"] = {
                     "component_id": arguments["component_id"],
-                    "preset_id": arguments["preset_id"],
+                    "preset_ids": preset_ids,
                     "preset_mesh_name": "CC_Base_Body",
                     "preset_vertex_count": manifest["body_vertex_count"],
                     "preset_following_mesh_names": sorted(
@@ -751,24 +851,23 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                         }),
                     }
         elif operation == "apply_cc3_body_preset":
+            selected_presets = arguments["preset_ids"]
+            selected_preset_count = sum(value is not None for value in selected_presets.values())
             result = {
                 "component_id": arguments["component_id"],
                 "morphs": arguments["morphs"],
-                "preset_id": arguments["preset_id"],
-                "preset_mesh_name": "CC_Base_Body" if arguments["preset_id"] else None,
+                "preset_ids": selected_presets,
+                "preset_mesh_name": "CC_Base_Body" if selected_preset_count else None,
                 "preset_following_mesh_names": (
                     sorted(set(manifest["mesh_names"]) - {"CC_Base_Body"})
-                    if arguments["preset_id"]
+                    if selected_preset_count
                     else []
                 ),
                 "preset_vertex_count": manifest["body_vertex_count"],
-                "shape_key_count": (
-                    manifest["body_shape_key_count"] - 1
-                    + int(arguments["preset_id"] is not None)
-                ),
+                "shape_key_count": manifest["body_shape_key_count"] - 1 + selected_preset_count,
                 "component_shape_key_count": (
                     manifest["component_shape_key_count"] - manifest["mesh_count"]
-                    + manifest["mesh_count"] * int(arguments["preset_id"] is not None)
+                    + manifest["mesh_count"] * selected_preset_count
                 ),
                 "scene_structure_validation": {"status": "pass"},
             }
@@ -782,6 +881,12 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                 ),
                 "scene_structure_validation": {"status": "pass"},
             }
+        staging_directory = _kwargs.get("staging_directory")
+        if staging_directory is not None:
+            staged_output = staging_directory / "output"
+            staged_output.mkdir(parents=True, exist_ok=True)
+            (staged_output / "scene_candidate.blend").write_bytes(b"synthetic scene")
+            (staged_output / "preview_candidate.glb").write_bytes(b"glTF synthetic preview")
         return {"result": result}
 
     monkeypatch.setattr(main, "run_blender_operation", fake_blender_operation)
@@ -794,7 +899,8 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
         f"/api/v1/projects/{project['id']}/draft-appearance",
         json={
             "eye_asset_id": "eye-normal-1",
-            "body_preset_id": None,
+            "body_preset_id": body_preset_id,
+            "head_preset_id": head_preset_id,
             "skin_asset_id": "skin_cc3plus_female_1",
             "skin_paint_strokes": [{
                 "material": "Std_Skin_Body",
@@ -830,19 +936,21 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
             "dependency_component_ids": [],
             "arguments": {
                 "asset_id": asset_id,
-                "preset_id": preset_id,
+                "preset_id": head_preset_id,
                 "skin_asset_id": "skin_cc3plus_female_1",
                 "skin_paint_strokes": appearance.json()["draft_skin_paint_strokes"],
             },
         },
     )
     assert imported.status_code == 200, imported.text
+    assert worker_calls[0]["preset_ids"] == selected_preset_ids
     component = imported.json()["project"]["components"][0]
     assert component["source_asset"]["morph_preview_mode"] == main.effective_morph_preview_mode(asset_id)
     assert component["source_asset"]["blend_sha256"] == manifest["blend_sha256"]
     assert len(component["source_asset"]["morph_control_specs"]) == 2042
     assert component["cc3_morphs"] == initial_morphs
-    assert component["cc3_preset_id"] == preset_id
+    assert component["cc3_preset_id"] == body_preset_id
+    assert component["cc3_head_preset_id"] == head_preset_id
     assert component["source_asset"]["skin_asset_id"] == "skin_cc3plus_female_1"
     assert "Std_Skin_Head_CC3PlusFemaleSkin" in component["material_references"]
     eyes = next(
@@ -851,7 +959,6 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
     )
     assert eyes["source_asset"]["asset_id"] == "eye-normal-1"
     assert eyes["object_ids"] == ["eye-object-1"]
-
     undone = client.post(
         f"/api/v1/projects/{project['id']}/modeling-tools",
         json={
@@ -864,7 +971,7 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
                 "component_id": component["id"],
                 "asset_id": asset_id,
                 "morphs": initial_morphs,
-                "preset_id": None,
+                "preset_ids": {"body": None, "head": None},
             },
         },
     )
@@ -891,6 +998,11 @@ def test_cc5_api_import_and_save_accepts_all_manifest_controls(monkeypatch):
     )
     assert changed.status_code == 200, changed.text
     assert changed.json()["project"]["components"][0]["cc3_morphs"] == morphs
+    assert worker_calls[-1] == {
+        "operation": "apply_cc3_morph_controls",
+        "scope_component_ids": [component["id"]],
+        "dependency_component_ids": [],
+    }
 
 
 def test_cc5_morph_preview_exports_from_isolated_scene_without_saving(tmp_path, monkeypatch):
@@ -908,7 +1020,9 @@ def test_cc5_morph_preview_exports_from_isolated_scene_without_saving(tmp_path, 
             "morphs_baked": False,
         }],
     )
-    main.REPOSITORY.create(project)
+    owner = main.REPOSITORY.get_account_by_username("primary-user")
+    assert owner is not None
+    main.REPOSITORY.create(project, owner["id"])
     scene_path = (
         tmp_path
         / "blender-projects"
@@ -1190,6 +1304,115 @@ def test_blender_adapter_accepts_preview_result_without_scene_output(tmp_path):
     assert parsed == result
 
 
+def test_blender_adapter_rejects_a_stale_transaction_attempt_result(tmp_path):
+    workspace = tmp_path / "workspace"
+    output = workspace / "output"
+    output.mkdir(parents=True)
+    (output / "scene_candidate.blend").write_bytes(b"scene")
+    (output / "preview_candidate.glb").write_bytes(b"glTF preview")
+    job_id = str(uuid4())
+    project_id = str(uuid4())
+    operation_id = str(uuid4())
+    transaction_id = str(uuid4())
+    current_attempt_id = str(uuid4())
+    result = {
+        "job_id": job_id,
+        "project_id": project_id,
+        "operation_id": operation_id,
+        "transaction_id": transaction_id,
+        "api_contract_version": blender_adapter.API_TRANSACTION_CONTRACT_VERSION,
+        "worker_contract_version": blender_adapter.STAGED_WORKER_CONTRACT_VERSION,
+        "attempt_id": str(uuid4()),
+        "operation": "apply_cc3_morph_controls",
+        "status": "completed",
+        "mode": "blender",
+        "expected_scene_version": 2,
+        "scene_version": 3,
+        "scene_file": "output/scene_candidate.blend",
+        "preview_file": "output/preview_candidate.glb",
+        "preview_export_status": "pass",
+    }
+    (output / "result.json").write_text(json.dumps(result), encoding="utf-8")
+
+    with pytest.raises(blender_adapter.BlenderAdapterError, match="did not match"):
+        blender_adapter._read_worker_result(
+            workspace=workspace,
+            job_id=job_id,
+            project_id=project_id,
+            operation_id=operation_id,
+            operation="apply_cc3_morph_controls",
+            expected_scene_version=2,
+            transaction_id=transaction_id,
+            attempt_id=current_attempt_id,
+        )
+
+    result["attempt_id"] = current_attempt_id
+    for key, incompatible_version in ((
+        "api_contract_version", "transaction-v999"),
+        ("worker_contract_version", "worker-staged-v999"),
+    ):
+        result["api_contract_version"] = blender_adapter.API_TRANSACTION_CONTRACT_VERSION
+        result["worker_contract_version"] = blender_adapter.STAGED_WORKER_CONTRACT_VERSION
+        result[key] = incompatible_version
+        (output / "result.json").write_text(json.dumps(result), encoding="utf-8")
+        with pytest.raises(blender_adapter.BlenderAdapterError, match="did not match"):
+            blender_adapter._read_worker_result(
+                workspace=workspace,
+                job_id=job_id,
+                project_id=project_id,
+                operation_id=operation_id,
+                operation="apply_cc3_morph_controls",
+                expected_scene_version=2,
+                transaction_id=transaction_id,
+                attempt_id=current_attempt_id,
+            )
+
+
+@pytest.mark.skipif(shutil.which("blender") is None, reason="Blender executable is not installed")
+def test_blender_adapter_stages_candidates_without_promoting_project_files(tmp_path, monkeypatch):
+    executable = shutil.which("blender")
+    assert executable is not None
+    monkeypatch.setenv("COMODEL_BLENDER_EXECUTABLE", executable)
+    project_id = uuid4()
+    initial = blender_adapter.run_blender_operation(
+        data_directory=tmp_path,
+        project_id=project_id,
+        operation_id=uuid4(),
+        expected_scene_version=0,
+        operation="validate_scene_structure",
+        arguments={},
+        scope_component_ids=[],
+        dependency_component_ids=[],
+    )
+    assert initial["scene_version"] == 0
+    output = tmp_path / "blender-projects" / str(project_id) / "output"
+    original_scene = hashlib.sha256((output / "scene.blend").read_bytes()).hexdigest()
+    original_preview = hashlib.sha256((output / "preview.glb").read_bytes()).hexdigest()
+    transaction_id = uuid4()
+    attempt_id = uuid4()
+
+    staged = blender_adapter.run_blender_operation(
+        data_directory=tmp_path,
+        project_id=project_id,
+        operation_id=uuid4(),
+        expected_scene_version=0,
+        operation="validate_scene_structure",
+        arguments={},
+        scope_component_ids=[],
+        dependency_component_ids=[],
+        transaction_id=transaction_id,
+        attempt_id=attempt_id,
+        staging_directory=tmp_path / "transactions" / str(transaction_id) / str(attempt_id),
+    )
+
+    assert staged["transaction_id"] == str(transaction_id)
+    assert staged["attempt_id"] == str(attempt_id)
+    assert staged["scene_file"] == "output/scene_candidate.blend"
+    assert staged["preview_file"] == "output/preview_candidate.glb"
+    assert hashlib.sha256((output / "scene.blend").read_bytes()).hexdigest() == original_scene
+    assert hashlib.sha256((output / "preview.glb").read_bytes()).hexdigest() == original_preview
+
+
 def test_create_project_and_plan():
     if not shutil.which("blender"):
         pytest.skip("Blender executable is not installed")
@@ -1221,17 +1444,217 @@ def test_project_summary_lists_only_menu_fields_and_character_state():
     }]
 
 
-def test_project_routes_require_token_or_loopback(monkeypatch):
+def test_project_routes_require_authenticated_account(monkeypatch):
     monkeypatch.delenv("COMODEL_API_TOKEN", raising=False)
     remote_client = TestClient(app, base_url="http://example.com")
     response = remote_client.get("/api/v1/projects")
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "ACCESS_DENIED"
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "AUTHENTICATION_REQUIRED"
 
     monkeypatch.setenv("COMODEL_API_TOKEN", "test-secret")
-    authed_client = TestClient(app, base_url="http://example.com")
+    authed_client = TestClient(app)
+    authed_client.cookies.update(client.cookies)
     response = authed_client.get("/api/v1/projects", headers={"Authorization": "Bearer test-secret"})
     assert response.status_code == 200
+
+
+def test_project_access_is_private_to_account_and_mutations_require_csrf():
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Private project"},
+    ).json()
+    workspace = main.REPOSITORY.path.parent / "blender-projects" / project["id"]
+    workspace.mkdir(parents=True)
+    sentinel = workspace / "scene.blend"
+    sentinel.write_bytes(b"private scene")
+
+    second_client = TestClient(app)
+    second_session = second_client.post(
+        "/api/v1/auth/register",
+        json={"username": "second-user", "password": "another-correct-password"},
+    )
+    assert second_session.status_code == 201
+    second_client.headers["X-CSRF-Token"] = second_session.json()["csrf_token"]
+    assert second_client.get(f"/api/v1/projects/{project['id']}").status_code == 404
+    assert second_client.get("/api/v1/projects/summary").json() == []
+    assert second_client.delete(f"/api/v1/projects/{project['id']}").status_code == 404
+    assert sentinel.is_file()
+
+    no_csrf_client = TestClient(app)
+    no_csrf_client.cookies.update(client.cookies)
+    response = no_csrf_client.delete(f"/api/v1/projects/{project['id']}")
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "CSRF_VALIDATION_FAILED"
+
+
+def test_project_delete_removes_project_state_uploads_and_blender_workspace(tmp_path):
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Delete complete project"},
+    ).json()
+    image = BytesIO()
+    from PIL import Image
+
+    Image.new("RGB", (2, 2)).save(image, format="PNG")
+    uploaded = client.post(
+        f"/api/v1/projects/{project['id']}/references",
+        files={"file": ("image.png", image.getvalue(), "image/png")},
+    )
+    assert uploaded.status_code == 201
+    storage_key = uploaded.json()["reference"]["storage_key"]
+    stored_reference = tmp_path / "assets" / storage_key
+
+    workspace = tmp_path / "blender-projects" / project["id"]
+    checkpoint = workspace / "checkpoints" / "scene.blend"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"checkpoint scene")
+    (workspace / "output").mkdir()
+    (workspace / "output" / "scene.blend").write_bytes(b"compiled scene")
+
+    deleted = client.delete(f"/api/v1/projects/{project['id']}")
+
+    assert deleted.status_code == 204
+    assert not stored_reference.exists()
+    assert not workspace.exists()
+    assert client.get(f"/api/v1/projects/{project['id']}").status_code == 404
+    assert client.get("/api/v1/projects/summary").json() == []
+
+
+def test_project_delete_reports_symlinked_workspace_without_following_it(tmp_path):
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Reject unsafe workspace deletion"},
+    ).json()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("outside project data", encoding="utf-8")
+    project_root = tmp_path / "blender-projects"
+    project_root.mkdir()
+    (project_root / project["id"]).symlink_to(outside, target_is_directory=True)
+
+    response = client.delete(f"/api/v1/projects/{project['id']}")
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "PROJECT_CLEANUP_FAILED"
+    assert sentinel.read_text(encoding="utf-8") == "outside project data"
+    assert client.get(f"/api/v1/projects/{project['id']}").status_code == 200
+
+
+def test_project_delete_reports_symlinked_reference_without_following_it(tmp_path):
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Reject unsafe reference deletion"},
+    ).json()
+    image = BytesIO()
+    from PIL import Image
+
+    Image.new("RGB", (2, 2)).save(image, format="PNG")
+    uploaded = client.post(
+        f"/api/v1/projects/{project['id']}/references",
+        files={"file": ("image.png", image.getvalue(), "image/png")},
+    )
+    storage_key = uploaded.json()["reference"]["storage_key"]
+    stored_reference = tmp_path / "assets" / storage_key
+    outside = tmp_path / "keep.txt"
+    outside.write_text("outside reference data", encoding="utf-8")
+    stored_reference.unlink()
+    stored_reference.symlink_to(outside)
+
+    response = client.delete(f"/api/v1/projects/{project['id']}")
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "PROJECT_CLEANUP_FAILED"
+    assert outside.read_text(encoding="utf-8") == "outside reference data"
+    assert client.get(f"/api/v1/projects/{project['id']}").status_code == 200
+
+
+def test_accounts_use_scrypt_and_generic_login_errors():
+    account = main.REPOSITORY.get_account_by_username("PRIMARY-USER")
+    assert account is not None
+    assert account["password_hash"].startswith("scrypt$")
+    assert main.verify_password("a-correct-horse-battery", account["password_hash"])
+    assert not main.verify_password("incorrect-password", account["password_hash"])
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "primary-user", "password": "incorrect-password"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "INVALID_CREDENTIALS"
+
+
+def test_login_cookie_is_http_only_and_logout_revokes_the_session():
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "primary-user", "password": "a-correct-horse-battery"},
+    )
+    assert response.status_code == 200
+    cookie_header = response.headers["set-cookie"]
+    assert "HttpOnly" in cookie_header
+    assert "SameSite=strict" in cookie_header
+    assert response.json()["csrf_token"]
+    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+    logout = client.post("/api/v1/auth/logout")
+    assert logout.status_code == 204
+    assert client.get("/api/v1/auth/session").json() == {
+        "account": None,
+        "csrf_token": None,
+    }
+
+
+def test_first_account_claims_legacy_ownerless_projects(tmp_path):
+    repository = SQLiteProjectRepository(tmp_path / "legacy.sqlite")
+    project_id = str(uuid4())
+    with repository._connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO projects (
+                id, name, target_profile, scene_version, created_at, updated_at, mode
+            ) VALUES (?, ?, ?, 0, ?, ?, 'blender')
+            """,
+            (
+                project_id,
+                "Existing project",
+                "general_purpose",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+    account_id = str(uuid4())
+    repository.create_account(
+        account_id,
+        "first-user",
+        "scrypt$16384$8$1$c2FsdA==$aGFzaA==",
+        "2026-01-02T00:00:00+00:00",
+    )
+    assert repository.get_project_owner(UUID(project_id)) == account_id
+
+
+def test_production_registration_is_disabled_by_default(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("ALLOW_ACCOUNT_REGISTRATION", raising=False)
+    response = TestClient(app).post(
+        "/api/v1/auth/register",
+        json={"username": "not-provisioned", "password": "a-correct-horse-battery"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "ACCOUNT_REGISTRATION_DISABLED"
+
+
+def test_openapi_describes_session_and_csrf_requirements():
+    schema = app.openapi()
+    assert schema["components"]["securitySchemes"]["SessionCookie"] == {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": main.SESSION_COOKIE_NAME,
+    }
+    project_create = schema["paths"]["/api/v1/projects"]["post"]
+    assert project_create["security"] == [{"SessionCookie": []}]
+    assert any(parameter["name"] == "X-CSRF-Token" for parameter in project_create["parameters"])
+    assert schema["paths"]["/api/v1/auth/session"]["get"]["security"] == [
+        {"SessionCookie": []},
+        {},
+    ]
 
 
 def test_unknown_project_is_404():
@@ -1284,12 +1707,14 @@ def test_legacy_character_preview_is_migrated_without_changing_scene_version(mon
 
     def regenerate_preview(**kwargs):
         calls.append(kwargs)
-        preview_path.write_bytes(b"glTF" + b"lightweight-preview")
-        (output_directory / "result.json").write_text(
+        staged_output = kwargs["staging_directory"] / "output"
+        staged_output.mkdir(parents=True)
+        (staged_output / "preview_candidate.glb").write_bytes(b"glTF" + b"lightweight-preview")
+        (staged_output / "result.json").write_text(
             json.dumps({"result": {"preview_compression": "meshopt-static"}}),
             encoding="utf-8",
         )
-        return {"scene_version": 3}
+        return {"preview_export_status": "pass"}
 
     monkeypatch.setattr(main, "run_blender_operation", regenerate_preview)
 
@@ -1322,12 +1747,14 @@ def test_preview_migration_records_unsupported_morph_export_once(monkeypatch, tm
 
     def regenerate_preview(**kwargs):
         calls.append(kwargs)
-        preview_path.write_bytes(b"glTF" + b"morph-preview")
-        (output_directory / "result.json").write_text(
+        staged_output = kwargs["staging_directory"] / "output"
+        staged_output.mkdir(parents=True)
+        (staged_output / "preview_candidate.glb").write_bytes(b"glTF" + b"morph-preview")
+        (staged_output / "result.json").write_text(
             json.dumps({"result": {"preview_compression": "meshopt-morphs"}}),
             encoding="utf-8",
         )
-        return {"scene_version": 0}
+        return {"preview_export_status": "pass"}
 
     monkeypatch.setattr(main, "run_blender_operation", regenerate_preview)
 
@@ -1836,6 +2263,49 @@ def test_modeling_tool_registry_rejects_unknown_tools_and_arbitrary_code_fields(
 
 
 
+def test_operations_list_preserves_legacy_names_without_expanding_requests():
+    created = client.post("/api/v1/projects", json={"name": "Legacy operation history"})
+    assert created.status_code == 201
+    project_id = UUID(created.json()["id"])
+    project = main.REPOSITORY.get(project_id)
+    assert project is not None
+    operation_id = str(uuid4())
+    project.operations = [{
+        "operation_id": operation_id,
+        "tool_name": "generate_cc5_hair",
+        "request_hash": "a" * 64,
+        "status": "completed",
+        "mode": "blender",
+        "expected_scene_version": 0,
+        "scene_version": 0,
+        "scope_component_ids": [],
+        "dependency_component_ids": [],
+        "created_component_ids": [],
+        "updated_component_ids": [],
+        "validation_results": [],
+        "summary": "Historical operation",
+        "created_at": project.created_at.isoformat(),
+    }]
+    main.REPOSITORY.save(project)
+
+    listed = client.get(f"/api/v1/projects/{project_id}/operations")
+    assert listed.status_code == 200, listed.text
+    assert listed.json()[0]["tool_name"] == "generate_cc5_hair"
+
+    rejected = client.post(
+        f"/api/v1/projects/{project_id}/modeling-tools",
+        json={
+            "tool_name": "generate_cc5_hair",
+            "operation_id": str(uuid4()),
+            "expected_scene_version": 0,
+            "scope_component_ids": [],
+            "dependency_component_ids": [],
+            "arguments": {},
+        },
+    )
+    assert rejected.status_code == 422
+
+
 def test_copilot_chat_uses_vscode_model_and_persists_provider(monkeypatch):
     project = client.post("/api/v1/projects", json={"name": "Copilot chat"}).json()
     bridge = CopilotBridge(
@@ -2031,6 +2501,7 @@ def test_copilot_chat_returns_compatible_appearance_proposal_without_applying_it
     assert result["project"]["draft_appearance"] == {
         "eye_asset_id": None,
         "body_preset_id": None,
+        "head_preset_id": None,
         "skin_asset_id": None,
     }
     assert result["project"]["scene_version"] == 0

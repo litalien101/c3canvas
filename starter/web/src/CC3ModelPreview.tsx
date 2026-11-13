@@ -6,7 +6,11 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone as cloneRiggedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { CanvasTexture, Color, Material, Matrix3, Matrix4, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, NoColorSpace, Object3D, SkinnedMesh, SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import { getMorphDeltaSteps } from './morphDeltaSteps';
-import { skinMaterialParameters, type SkinDefinition } from './semanticSkin';
+import { applyFrecklesToCanvas, skinMaterialParameters, type SkinDefinition } from './semanticSkin';
+import { applySkinMaterialUvOffset, normalizeSkinPaintMaterialName, resolveSkinPaintMaterialFromGeometry, skinPaintPoint, shouldConnectSkinPaintPoints } from './skinPaint';
+import type { SkinPaintPoint, SkinPaintStroke } from './skinPaint';
+
+export type { SkinPaintPoint, SkinPaintStroke } from './skinPaint';
 
 export type CC3MorphControl = string;
 export type CC3MorphControlSpec = {
@@ -18,15 +22,6 @@ export type CC3MorphControlSpec = {
   positive_shape_key: string | null;
   negative_shape_key: string | null;
   isPreset?: boolean;
-};
-export type SkinPaintPoint = { u: number; v: number };
-export type SkinPaintStroke = {
-  material: 'Std_Skin_Head' | 'Std_Skin_Body' | 'Std_Skin_Arm' | 'Std_Skin_Leg';
-  tool: 'paint' | 'erase';
-  color: string;
-  radius: number;
-  opacity: number;
-  points: SkinPaintPoint[];
 };
 export type ModelPartKey = 'body' | 'eyes' | 'teeth' | 'tongue';
 
@@ -41,7 +36,6 @@ const MAX_PREVIEW_TEXTURE_SIZE = 1024;
 const ATTACHMENT_SAMPLE_COUNT = 32;
 const BODY_VERTEX_NEIGHBOR_COUNT = 4;
 const EYE_ASSET_TO_PROXY_SCALE = 0.01;
-const PRESET_TRANSITION_DURATION_MS = 450;
 const EYE_TRANSITION_DURATION_MS = 300;
 
 function normalizeMeshName(name: string) {
@@ -314,7 +308,51 @@ type SkinPaintPointerProps = {
   onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
   onPointerCancel?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerOut?: (event: ThreeEvent<PointerEvent>) => void;
 };
+
+function updateSkinPaintCursor(
+  event: ThreeEvent<PointerEvent>,
+  cursor: Mesh | null,
+  size: number,
+  pressure: number,
+) {
+  if (!(event.object instanceof Mesh) || !event.face || !cursor) {
+    if (cursor) cursor.visible = false;
+    return;
+  }
+  const { geometry } = event.object;
+  const uv = geometry.getAttribute('uv');
+  const position = geometry.getAttribute('position');
+  if (!uv || !position) {
+    cursor.visible = false;
+    return;
+  }
+  const faceVertices = [event.face.a, event.face.b, event.face.c];
+  const worldPositions = faceVertices.map((index) =>
+    new Vector3().fromBufferAttribute(position, index).applyMatrix4(event.object.matrixWorld));
+  const uvPositions = faceVertices.map((index) => [uv.getX(index), uv.getY(index)] as const);
+  let worldDistance = 0;
+  let uvDistance = 0;
+  for (let edge = 0; edge < 3; edge += 1) {
+    const next = (edge + 1) % 3;
+    worldDistance += worldPositions[edge].distanceTo(worldPositions[next]);
+    uvDistance += Math.hypot(
+      uvPositions[edge][0] - uvPositions[next][0],
+      uvPositions[edge][1] - uvPositions[next][1],
+    );
+  }
+  const worldPerUv = uvDistance > 0 ? worldDistance / uvDistance : 0;
+  const worldRadius = Math.max(
+    0.001,
+    (size / 2048) * pressure * worldPerUv,
+  );
+  const normal = event.face.normal.clone().applyMatrix3(new Matrix3().getNormalMatrix(event.object.matrixWorld)).normalize();
+  cursor.position.copy(event.point).addScaledVector(normal, 0.001);
+  cursor.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
+  cursor.scale.setScalar(worldRadius);
+  cursor.visible = true;
+}
 
 function paintSkinTexture(
   context: CanvasRenderingContext2D,
@@ -324,23 +362,64 @@ function paintSkinTexture(
   to: SkinPaintPoint,
   stroke: Pick<SkinPaintStroke, 'tool' | 'color' | 'radius' | 'opacity'>,
   baseCanvas: HTMLCanvasElement,
+  fromPressure = from.pressure ?? 1,
+  toPressure = to.pressure ?? 1,
 ) {
   context.save();
-  context.lineWidth = Math.max(1, stroke.radius * 2 * width);
+  const pressure = (fromPressure + toPressure) / 2;
+  if (stroke.tool === 'freckles') {
+    const startX = from.u * width;
+    const startY = from.v * height;
+    const endX = to.u * width;
+    const endY = to.v * height;
+    const distance = Math.hypot(endX - startX, endY - startY);
+    const spacing = Math.max(3, stroke.radius * width * 0.12);
+    const steps = Math.max(1, Math.ceil(distance / spacing));
+    const brushRadius = Math.max(1, stroke.radius * width * pressure);
+    let seed = Math.floor((from.u * 10000 + from.v * 7777 + to.u * 313 + to.v * 17) * 1000) >>> 0;
+    const random = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      seed >>>= 0;
+      return seed / 0x1_0000_0000;
+    };
+    context.fillStyle = stroke.color;
+    context.globalAlpha = stroke.opacity * pressure;
+    for (let step = 0; step <= steps; step += 1) {
+      const fraction = step / steps;
+      const centerX = startX + (endX - startX) * fraction;
+      const centerY = startY + (endY - startY) * fraction;
+      const count = 4 + Math.floor(random() * 5);
+      for (let mark = 0; mark < count; mark += 1) {
+        const angle = random() * Math.PI * 2;
+        const distanceFromCenter = Math.sqrt(random()) * brushRadius;
+        const x = centerX + Math.cos(angle) * distanceFromCenter;
+        const y = centerY + Math.sin(angle) * distanceFromCenter;
+        const radius = Math.max(0.7, brushRadius * (0.08 + random() * 0.14));
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+    context.restore();
+    return;
+  }
+  context.lineWidth = Math.max(1, stroke.radius * 2 * width * pressure);
   context.lineCap = 'round';
   context.lineJoin = 'round';
   context.beginPath();
   context.moveTo(from.u * width, from.v * height);
   context.lineTo(to.u * width, to.v * height);
   if (stroke.tool === 'erase') {
-    context.globalAlpha = stroke.opacity;
+    context.globalAlpha = stroke.opacity * pressure;
     context.globalCompositeOperation = 'destination-out';
     context.stroke();
     context.globalCompositeOperation = 'destination-over';
     context.globalAlpha = 1;
     context.drawImage(baseCanvas, 0, 0);
   } else {
-    context.globalAlpha = stroke.opacity;
+    context.globalAlpha = stroke.opacity * pressure;
     context.strokeStyle = stroke.color;
     context.stroke();
   }
@@ -386,6 +465,14 @@ function SkinMaterialPreview({
   paintStrokes: SkinPaintStroke[];
   paintHandlerRef: SkinPaintHandlerRef;
 }) {
+  const paintTargetsRef = useRef<Map<SkinPaintStroke['material'], {
+    context: CanvasRenderingContext2D;
+    baseCanvas: HTMLCanvasElement;
+    texture: CanvasTexture;
+    width: number;
+    height: number;
+  }>>(new Map());
+  const previousPaintStrokesRef = useRef<SkinPaintStroke[]>(paintStrokes);
   const entries = useMemo(() => Object.entries(skinPreview.materials), [skinPreview]);
   const textureUrls = useMemo(
     () => entries.flatMap(([, urls]) => [urls.diffuse, urls.normal]),
@@ -426,15 +513,19 @@ function SkinMaterialPreview({
         const sourceNormalScale = material.normalScale.clone();
         const sourceColor = material.color.clone();
         const sourceRoughness = material.roughness;
+        const paintMaterial = normalizeSkinPaintMaterialName(materialName);
         const previewDiffuse = createPreviewTexture(diffuseSource);
         const previewNormal = createPreviewTexture(normalSource);
         const diffuse = previewDiffuse === diffuseSource ? diffuseSource.clone() : previewDiffuse;
         const normal = previewNormal === normalSource ? normalSource.clone() : previewNormal;
         configureSkinPreviewTexture(diffuse, sourceMap, SRGBColorSpace);
         configureSkinPreviewTexture(normal, sourceNormalMap, NoColorSpace);
-        const paintMaterial = materialName as SkinPaintStroke['material'];
+        if (paintMaterial) {
+          applySkinMaterialUvOffset(diffuse, paintMaterial);
+          applySkinMaterialUvOffset(normal, paintMaterial);
+        }
         let paintTexture: CanvasTexture | null = null;
-        if (paintMaterial in skinPreview.materials) {
+        if (paintMaterial && paintMaterial in skinPreview.materials) {
           const image = diffuse.image;
           if (!(image instanceof HTMLImageElement
             || image instanceof HTMLCanvasElement
@@ -455,6 +546,7 @@ function SkinMaterialPreview({
           context.drawImage(baseCanvas, 0, 0);
           paintTexture = new CanvasTexture(canvas);
           configureSkinPreviewTexture(paintTexture, sourceMap, SRGBColorSpace);
+          applySkinMaterialUvOffset(paintTexture, paintMaterial);
           paintTexture.flipY = false;
           for (const stroke of paintStrokes) {
             if (stroke.material !== paintMaterial) continue;
@@ -471,6 +563,9 @@ function SkinMaterialPreview({
                 baseCanvas,
               );
             }
+          }
+          if (paintMaterial === 'Std_Skin_Head') {
+            applyFrecklesToCanvas(context, canvas.width, canvas.height, skinDefinition.features.freckles);
           }
           paintTexture.needsUpdate = true;
           diffuse.dispose();
@@ -511,6 +606,7 @@ function SkinMaterialPreview({
       target.texture.needsUpdate = true;
     };
     paintHandlerRef.current = paintHandler;
+    paintTargetsRef.current = paintTargets;
     onPreviewError(
       matched.size === entries.length
         ? ''
@@ -518,6 +614,7 @@ function SkinMaterialPreview({
     );
     return () => {
       if (paintHandlerRef.current === paintHandler) paintHandlerRef.current = null;
+      if (paintTargetsRef.current === paintTargets) paintTargetsRef.current = new Map();
       for (const { material, map, normalMap, normalScale, color, roughness, textures } of replaced) {
         material.map = map;
         material.normalMap = normalMap;
@@ -531,7 +628,45 @@ function SkinMaterialPreview({
         }
       }
     };
-  }, [entries, loadedTextures, model, onPreviewError, ownedTextures, paintHandlerRef, paintStrokes, skinDefinition, skinPreview.materials, textureUrls]);
+  }, [entries, loadedTextures, model, onPreviewError, ownedTextures, paintHandlerRef, skinDefinition, skinPreview.materials, textureUrls]);
+
+  useEffect(() => {
+    const previous = previousPaintStrokesRef.current;
+    const previousSignature = JSON.stringify(previous);
+    const nextSignature = JSON.stringify(paintStrokes);
+    previousPaintStrokesRef.current = paintStrokes;
+    if (previousSignature === nextSignature) return;
+
+    const previousIsPrefixOfNext = paintStrokes.length >= previous.length
+      && previous.every((stroke, index) => JSON.stringify(stroke) === JSON.stringify(paintStrokes[index]));
+    if (previousIsPrefixOfNext) return;
+
+    for (const [paintMaterial, target] of paintTargetsRef.current) {
+      target.context.clearRect(0, 0, target.width, target.height);
+      target.context.drawImage(target.baseCanvas, 0, 0);
+      for (const stroke of paintStrokes) {
+        if (stroke.material !== paintMaterial) continue;
+        const first = stroke.points[0];
+        if (!first) continue;
+        paintSkinTexture(target.context, target.width, target.height, first, first, stroke, target.baseCanvas);
+        for (let pointIndex = 1; pointIndex < stroke.points.length; pointIndex += 1) {
+          paintSkinTexture(
+            target.context,
+            target.width,
+            target.height,
+            stroke.points[pointIndex - 1],
+            stroke.points[pointIndex],
+            stroke,
+            target.baseCanvas,
+          );
+        }
+      }
+      if (paintMaterial === 'Std_Skin_Head') {
+        applyFrecklesToCanvas(target.context, target.width, target.height, skinDefinition.features.freckles);
+      }
+      target.texture.needsUpdate = true;
+    }
+  }, [paintStrokes, skinDefinition]);
   return null;
 }
 
@@ -822,6 +957,7 @@ export function CC3ModelPreview({
   skinPaintOpacity,
   skinPaintStrokes,
   onSkinPaintStrokes,
+  onSkinPaintPointerOnModel,
 }: {
   previewUrl: string;
   eyePreviewUrl: string | null;
@@ -839,17 +975,19 @@ export function CC3ModelPreview({
   onSkinPreviewError: (message: string) => void;
   skinPaintEnabled: boolean;
   skinPaintColor: string;
-  skinPaintTool: 'paint' | 'erase';
+  skinPaintTool: 'paint' | 'freckles' | 'erase';
   skinPaintSize: number;
   skinPaintOpacity: number;
   skinPaintStrokes: SkinPaintStroke[];
   onSkinPaintStrokes: (strokes: SkinPaintStroke[]) => void;
+  onSkinPaintPointerOnModel?: (onModel: boolean) => void;
 }) {
   const gltf = useLoader(GLTFLoader, previewUrl, configureGltfLoader);
   const invalidate = useThree((state) => state.invalidate);
   const rendererDomElement = useThree((state) => state.gl.domElement);
   const [eyePreviewReady, setEyePreviewReady] = useState(false);
   const paintHandlerRef = useRef<SkinPaintHandler | null>(null);
+  const paintCursorRef = useRef<Mesh | null>(null);
   const activePaintStroke = useRef<{
     pointerId: number;
     stroke: SkinPaintStroke;
@@ -857,20 +995,30 @@ export function CC3ModelPreview({
     lastPoint: SkinPaintPoint;
   } | null>(null);
   const markEyePreviewReady = useCallback(() => setEyePreviewReady(true), []);
-  const markEyePresetError = useCallback(
+  const markOverlayMorphError = useCallback(
     (error: string) => onClientMorphPreviewState('error', error),
     [onClientMorphPreviewState],
   );
   const getPaintMaterial = useCallback((event: ThreeEvent<PointerEvent>) => {
     if (!(event.object instanceof Mesh)) return null;
     const objectMaterials = Array.isArray(event.object.material) ? event.object.material : [event.object.material];
-    const materialName = objectMaterials[event.face?.materialIndex ?? 0]?.name.replace(/\.\d+$/, '');
-    return materialName === 'Std_Skin_Head'
-      || materialName === 'Std_Skin_Body'
-      || materialName === 'Std_Skin_Arm'
-      || materialName === 'Std_Skin_Leg'
-      ? materialName
-      : null;
+    const materialNames = objectMaterials.map((material) => material?.name);
+    const geometryGroupMaterial = resolveSkinPaintMaterialFromGeometry(
+      materialNames,
+      event.faceIndex ?? undefined,
+      event.object.geometry.groups,
+      Boolean(event.object.geometry.getIndex()),
+    );
+    if (geometryGroupMaterial) return geometryGroupMaterial;
+
+    // Compatibility fallback for previews whose geometry groups are absent
+    // or simplified by a loader. Do not scan every skin slot: resolve only
+    // the face slot when the raycast supplies one.
+    const directIndex = event.face?.materialIndex;
+    if (typeof directIndex === 'number') {
+      return normalizeSkinPaintMaterialName(materialNames[directIndex]);
+    }
+    return null;
   }, []);
   const finishSkinPaintStroke = useCallback(() => {
     const active = activePaintStroke.current;
@@ -878,6 +1026,12 @@ export function CC3ModelPreview({
     activePaintStroke.current = null;
     onSkinPaintStrokes(active.strokes);
   }, [onSkinPaintStrokes]);
+  useEffect(() => {
+    if (!skinPaintEnabled && paintCursorRef.current) {
+      paintCursorRef.current.visible = false;
+      invalidate();
+    }
+  }, [invalidate, skinPaintEnabled]);
   useEffect(() => {
     const finishOnPointerEnd = (event: PointerEvent) => {
       if (activePaintStroke.current?.pointerId === event.pointerId) finishSkinPaintStroke();
@@ -890,11 +1044,33 @@ export function CC3ModelPreview({
     };
   }, [finishSkinPaintStroke, rendererDomElement]);
   const handleSkinPaintPointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
-    if (!skinPaintEnabled || event.button !== 0 || !event.uv) return;
     const material = getPaintMaterial(event);
+    onSkinPaintPointerOnModel?.(Boolean(material));
+    if (
+      !skinPaintEnabled
+      || event.button !== 0
+      || !event.uv
+      || event.nativeEvent.shiftKey
+      || event.nativeEvent.ctrlKey
+      || event.nativeEvent.metaKey
+      || event.nativeEvent.altKey
+    ) return;
     if (!material) return;
     event.stopPropagation();
-    const point = { u: event.uv.x, v: event.uv.y };
+    const point = skinPaintPoint(
+      event.uv.x,
+      event.uv.y,
+      event.nativeEvent.pointerType,
+      event.nativeEvent.pressure,
+      material,
+    );
+    updateSkinPaintCursor(
+      event,
+      paintCursorRef.current,
+      skinPaintSize,
+      point.pressure ?? 1,
+    );
+    invalidate();
     const stroke: SkinPaintStroke = {
       material,
       tool: skinPaintTool,
@@ -908,30 +1084,61 @@ export function CC3ModelPreview({
       event.nativeEvent.target.setPointerCapture(event.pointerId);
     }
     paintHandlerRef.current?.(material, point, point, stroke);
-  }, [getPaintMaterial, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
+  }, [getPaintMaterial, invalidate, onSkinPaintPointerOnModel, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
   const handleSkinPaintPointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
-    const active = activePaintStroke.current;
-    if (!skinPaintEnabled || !active || active.pointerId !== event.pointerId || !event.uv) return;
     const material = getPaintMaterial(event);
-    if (!material) return;
-    event.stopPropagation();
-    const point = { u: event.uv.x, v: event.uv.y };
-    if (material !== active.stroke.material) {
-      const stroke: SkinPaintStroke = {
-        material,
-        tool: skinPaintTool,
-        color: skinPaintColor,
-        radius: skinPaintSize / 2048,
-        opacity: skinPaintOpacity / 100,
-        points: [point],
-      };
-      active.stroke = stroke;
-      active.strokes.push(stroke);
-      active.lastPoint = point;
-      paintHandlerRef.current?.(material, point, point, stroke);
+    onSkinPaintPointerOnModel?.(Boolean(material));
+    if (
+      !skinPaintEnabled
+      || !event.uv
+    ) {
+      if (paintCursorRef.current) paintCursorRef.current.visible = false;
       return;
     }
-    if (active.stroke.points.length >= 256) {
+    if (
+      event.nativeEvent.shiftKey
+      || event.nativeEvent.ctrlKey
+      || event.nativeEvent.metaKey
+      || event.nativeEvent.altKey
+    ) {
+      const point = skinPaintPoint(
+        event.uv.x,
+        event.uv.y,
+        event.nativeEvent.pointerType,
+        event.nativeEvent.pressure,
+        material ?? undefined,
+      );
+      if (material) updateSkinPaintCursor(event, paintCursorRef.current, skinPaintSize, point.pressure ?? 1);
+      else if (paintCursorRef.current) paintCursorRef.current.visible = false;
+      invalidate();
+      return;
+    }
+    const active = activePaintStroke.current;
+    if (!material) {
+      if (paintCursorRef.current) paintCursorRef.current.visible = false;
+      return;
+    }
+    const point = skinPaintPoint(
+      event.uv.x,
+      event.uv.y,
+      event.nativeEvent.pointerType,
+      event.nativeEvent.pressure,
+      material,
+    );
+    updateSkinPaintCursor(
+      event,
+      paintCursorRef.current,
+      skinPaintSize,
+      point.pressure ?? 1,
+    );
+    invalidate();
+    if (!active || active.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    if (
+      material !== active.stroke.material
+      || !shouldConnectSkinPaintPoints(active.lastPoint, point)
+      || active.stroke.points.length >= 256
+    ) {
       const stroke: SkinPaintStroke = {
         material,
         tool: skinPaintTool,
@@ -949,7 +1156,7 @@ export function CC3ModelPreview({
     active.stroke.points.push(point);
     paintHandlerRef.current?.(material, active.lastPoint, point, active.stroke);
     active.lastPoint = point;
-  }, [finishSkinPaintStroke, getPaintMaterial, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
+  }, [getPaintMaterial, invalidate, onSkinPaintPointerOnModel, skinPaintColor, skinPaintEnabled, skinPaintOpacity, skinPaintSize, skinPaintTool]);
   const handleSkinPaintPointerUp = useCallback((event: ThreeEvent<PointerEvent>) => {
     if (activePaintStroke.current?.pointerId !== event.pointerId) return;
     event.stopPropagation();
@@ -959,12 +1166,18 @@ export function CC3ModelPreview({
     }
     finishSkinPaintStroke();
   }, [finishSkinPaintStroke]);
+  const handleSkinPaintPointerOut = useCallback(() => {
+    onSkinPaintPointerOnModel?.(false);
+    if (paintCursorRef.current) paintCursorRef.current.visible = false;
+    invalidate();
+  }, [invalidate, onSkinPaintPointerOnModel]);
   const paintPointerProps: SkinPaintPointerProps = skinPaintEnabled
     ? {
       onPointerDown: handleSkinPaintPointerDown,
       onPointerMove: handleSkinPaintPointerMove,
       onPointerUp: handleSkinPaintPointerUp,
       onPointerCancel: handleSkinPaintPointerUp,
+      onPointerOut: handleSkinPaintPointerOut,
     }
     : {};
   const previewVisibility = useMemo(
@@ -976,7 +1189,10 @@ export function CC3ModelPreview({
   }, [eyePreviewUrl]);
   const { model, textures, materials, attachments } = useMemo(() => {
     const preview = clonePreviewModel(gltf.scene, eyePreviewReady);
-    return { ...preview, attachments: createMorphAttachments(preview.model) };
+    return {
+      ...preview,
+      attachments: createMorphAttachments(preview.model),
+    };
   }, [eyePreviewReady, gltf.scene]);
   const previousState = useRef<{
     model: Object3D;
@@ -1009,6 +1225,15 @@ export function CC3ModelPreview({
   }, []);
 
   return <>
+    {skinPaintEnabled && <mesh
+      ref={paintCursorRef}
+      visible={false}
+      renderOrder={1000}
+      raycast={() => null}
+    >
+      <ringGeometry args={[0.8, 1, 40]} />
+      <meshBasicMaterial color="#111111" transparent opacity={0.95} depthTest={false} side={2} />
+    </mesh>}
     {morphPreviewUrl !== null && loadedMorphPreviewUrl === morphPreviewUrl
       ? null
       : <primitive object={model} {...paintPointerProps} />}
@@ -1054,7 +1279,7 @@ export function CC3ModelPreview({
         morphDeltaSha256={morphDeltaSha256}
         presetDeltaBaseUrl={morphPresetDeltaBaseUrl}
         presetDeltaSha256={morphPresetDeltaSha256}
-        onMorphError={markEyePresetError}
+        onMorphError={markOverlayMorphError}
         onTransitionComplete={markEyePreviewReady}
       />
     </Suspense>}
@@ -1478,7 +1703,6 @@ function EyeAssetMorphController({
     () => createEyeBodyBindings(gltf.scene, eyeGeometries),
     [eyeGeometries, gltf.scene],
   );
-  const currentDeltas = useRef(new Map<string, Float32Array>());
   const deltaCache = useRef(new Map<CC3MorphControl, MorphDeltaTarget>());
   const deltaCacheBytes = useRef(0);
   const pendingDeltas = useRef(new Map<CC3MorphControl, Promise<MorphDeltaTarget>>());
@@ -1487,7 +1711,6 @@ function EyeAssetMorphController({
 
   useEffect(() => {
     const currentRequestId = ++requestId.current;
-    let frame = 0;
     const activeControls = controls.filter(({ id }) => (morphs[id] ?? 0) !== 0);
     const loadDelta = (control: CC3MorphControlSpec) => {
       const cached = deltaCache.current.get(control.id);
@@ -1630,55 +1853,23 @@ function EyeAssetMorphController({
         }
         targetDeltas.set(key, delta);
       }
-      const startDeltas = currentDeltas.current;
-      if (!initialMorphApplied.current) {
-        for (const [key, geometry] of eyeGeometries) {
-          const base = basePositions.get(key);
-          if (!base) continue;
-          const delta = targetDeltas.get(key) ?? new Float32Array(base.length);
-          const positions = geometry.getAttribute('position');
-          const values = positions.array;
-          for (let index = 0; index < base.length; index += 1) {
-            values[index] = base[index] + delta[index];
-          }
-          positions.needsUpdate = true;
-          geometry.computeVertexNormals();
+      for (const [key, geometry] of eyeGeometries) {
+        const base = basePositions.get(key);
+        if (!base) continue;
+        const delta = targetDeltas.get(key) ?? new Float32Array(base.length);
+        const positions = geometry.getAttribute('position');
+        const values = positions.array;
+        for (let index = 0; index < base.length; index += 1) {
+          values[index] = base[index] + delta[index];
         }
-        currentDeltas.current = targetDeltas;
-        initialMorphApplied.current = true;
-        invalidate();
-        if (readyUrl) onReady?.(readyUrl);
-        return;
+        positions.needsUpdate = true;
+        geometry.computeVertexNormals();
       }
-      const startedAt = performance.now();
-      const animate = (timestamp: number) => {
-        if (currentRequestId !== requestId.current) return;
-        const progress = Math.min(1, (timestamp - startedAt) / PRESET_TRANSITION_DURATION_MS);
-        const easedProgress = progress * progress * (3 - 2 * progress);
-        const interpolatedDeltas = new Map<string, Float32Array>();
-        for (const [key, geometry] of eyeGeometries) {
-          const base = basePositions.get(key);
-          if (!base) continue;
-          const start = startDeltas.get(key);
-          const end = targetDeltas.get(key);
-          const current = new Float32Array(base.length);
-          const positions = geometry.getAttribute('position');
-          const values = positions.array;
-          for (let index = 0; index < base.length; index += 1) {
-            const delta = (start?.[index] ?? 0) * (1 - easedProgress)
-              + (end?.[index] ?? 0) * easedProgress;
-            current[index] = delta;
-            values[index] = base[index] + delta;
-          }
-          interpolatedDeltas.set(key, current);
-          positions.needsUpdate = true;
-          geometry.computeVertexNormals();
-        }
-        currentDeltas.current = interpolatedDeltas;
-        invalidate();
-        if (progress < 1) frame = requestAnimationFrame(animate);
-      };
-      frame = requestAnimationFrame(animate);
+      if (!initialMorphApplied.current) {
+        initialMorphApplied.current = true;
+        if (readyUrl) onReady?.(readyUrl);
+      }
+      invalidate();
     }).catch((error: unknown) => {
       if (currentRequestId !== requestId.current) return;
       onMorphError(error instanceof Error ? error.message : 'Could not apply morphs to the selected eyes.');
@@ -1686,7 +1877,6 @@ function EyeAssetMorphController({
 
     return () => {
       requestId.current += 1;
-      cancelAnimationFrame(frame);
     };
   }, [
     basePositions,
@@ -1815,7 +2005,6 @@ function MorphableCC3Preview({
   const pendingMorphDeltas = useRef(new Map<CC3MorphControl, Promise<MorphDeltaTarget>>());
   const morphDeltaCacheBytes = useRef(0);
   const requestSequence = useRef(0);
-  const animationFrame = useRef<number | null>(null);
   const appliedProxyMorphs = useRef<{
     model: Object3D;
     values: Map<CC3MorphControl, number>;
@@ -1893,56 +2082,19 @@ function MorphableCC3Preview({
         .then((loadedTargets) => {
           if (requestId !== requestSequence.current) return;
           const targets = new Map(loadedTargets);
-          if (changedControls.some(({ isPreset }) => isPreset)) {
-            const startValues = new Map(
-              changedControls.map(({ id }) => [id, appliedState.values.get(id) ?? 0]),
-            );
-            const startedAt = performance.now();
-            onLoaded(previewUrl);
-            const animatePreset = (timestamp: number) => {
-              if (requestId !== requestSequence.current) return;
-              const progress = Math.min(1, (timestamp - startedAt) / PRESET_TRANSITION_DURATION_MS);
-              const easedProgress = progress * progress * (3 - 2 * progress);
-              const frameMorphs = { ...morphs };
-              for (const { id } of changedControls) {
-                const start = startValues.get(id) ?? 0;
-                const end = morphs[id] ?? 0;
-                frameMorphs[id] = start + (end - start) * easedProgress;
-              }
-              applyMorphProxyState(
-                model,
-                visible,
-                frameMorphs,
-                changedControls,
-                targets,
-                proxyGeometries,
-                appliedState.values,
-              );
-              appliedProxyMorphs.current = appliedState;
-              invalidate();
-              if (progress < 1) {
-                animationFrame.current = requestAnimationFrame(animatePreset);
-              } else {
-                animationFrame.current = null;
-                onStatus('idle', '');
-              }
-            };
-            animationFrame.current = requestAnimationFrame(animatePreset);
-          } else {
-            applyMorphProxyState(
-              model,
-              visible,
-              morphs,
-              changedControls,
-              targets,
-              proxyGeometries,
-              appliedState.values,
-            );
-            appliedProxyMorphs.current = appliedState;
-            invalidate();
-            onStatus('idle', '');
-            onLoaded(previewUrl);
-          }
+          applyMorphProxyState(
+            model,
+            visible,
+            morphs,
+            changedControls,
+            targets,
+            proxyGeometries,
+            appliedState.values,
+          );
+          appliedProxyMorphs.current = appliedState;
+          invalidate();
+          onStatus('idle', '');
+          onLoaded(previewUrl);
         })
         .catch((error: unknown) => {
           if (requestId !== requestSequence.current) return;
@@ -1950,10 +2102,6 @@ function MorphableCC3Preview({
         });
       return () => {
         requestSequence.current += 1;
-        if (animationFrame.current !== null) {
-          cancelAnimationFrame(animationFrame.current);
-          animationFrame.current = null;
-        }
       };
     }
 

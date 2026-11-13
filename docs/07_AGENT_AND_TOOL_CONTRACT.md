@@ -30,11 +30,13 @@ Do not put every role into one unbounded prompt loop.
 - A tool returns `created_component_ids`, `updated_component_ids`, `warnings`, `validation_results`, `new_scene_version`, `preview_asset_id`.
 
 ## Current supported tool catalog
-1. `import_base_model` — explicitly assemble only the project's selected, installed pinned CC3 Female/Male or CC5/CC3+ asset after plan approval; apply its validated saved draft morph map in that same worker operation.
+1. `import_base_model` — explicitly assemble only the project's selected, installed pinned CC3 Female/Male or CC5/CC3+ asset after plan approval; apply its validated saved draft morph map and, for CC5/CC3+, both saved body/head preset selections in that same worker operation.
 2. `apply_cc3_morph_controls` — save the complete asset-specific manifest map to exactly one matching imported CC3 body.
 3. `bake_cc3_morph_controls` — apply a complete asset-specific morph map to exactly one matching CC3 body, freeze it into mesh geometry, and remove editable shape keys. The server checkpoints before baking; restore that checkpoint to recover sliders.
 4. `restore_checkpoint` — restore an authorized saved scene while advancing its version.
 5. `validate_scene_structure` — validate Blender object identifiers.
+
+Hair routes and worker tools are currently unsupported. A future hair feature must define its draft/preview/compile behavior, scoped operations, validation, and tests before entering either allowlist.
 
 The active API and worker reject retired placeholder, OBJ, legacy CC5-import, garment, eyelid, and ear-sculpt operations. The supported CC5/CC3+ full-morph asset is accepted only through the pinned `import_base_model` contract. A future tool requires a documented scope, validation contract, approval behavior, and passing tests before it is added to either allowlist.
 

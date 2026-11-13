@@ -1,11 +1,18 @@
-import { Component, type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Canvas, useThree } from '@react-three/fiber';
-import { ContactShadows, OrbitControls, OrthographicCamera, PerspectiveCamera, useProgress } from '@react-three/drei';
-import { MOUSE } from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { Activity, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Camera, ChevronDown, ChevronRight, Circle, CircleHelp, Crosshair, Download, Ear, Eye, EyeOff, Footprints, FolderOpen, GripVertical, Hand, Home, Info, Layers3, LockKeyhole, Maximize, Minimize, MoveVertical, Palette, Paperclip, PersonStanding, Play, Plus, RotateCcw, ScanFace, Search, Send, Settings, SlidersHorizontal, Sparkles, Star, Sun, Trash2, UserRound, Video, Waves, X, Zap, ZoomIn } from 'lucide-react';
-import { CC3ModelPreview, type CC3MorphControl, type CC3MorphControlSpec, type ModelPartKey, type SkinPaintStroke } from './CC3ModelPreview';
-import { applyElvenEarPreset, ELVEN_EAR_PRESET_MORPHS } from './characterMorphPresets';
+import { AccountGate } from './AccountGate';
+import { ApiRequestError, apiFetch, requestJson, setCsrfToken, type AuthAccount, type AuthSession } from './apiClient';
+import type { CC3MorphControl, CC3MorphControlSpec, ModelPartKey, SkinPaintStroke } from './CC3ModelPreview';
+import {
+  applyElvenEarPreset,
+  ELVEN_EAR_PRESET_MORPHS,
+  normalizeCharacterPresetSelection,
+  selectCharacterPreset,
+  type CharacterPresetKind,
+  type CharacterPresetSelection,
+} from './characterMorphPresets';
 import { BODY_MORPH_GROUPS, bodyMorphGroupForControl, type BodyMorphGroupId } from './bodyMorphGroups';
 import { EAR_MORPH_GROUPS, earMorphGroupForControl, type EarMorphGroupId } from './earMorphGroups';
 import { HEAD_MORPH_GROUPS, headMorphGroupForControl, type HeadMorphGroupId } from './headMorphGroups';
@@ -16,9 +23,21 @@ import { isOtherMorphAreaId, OTHER_MORPH_GROUPS, otherMorphGroupForControl, type
 import {
   applySkinDefinitionPatch,
   DEFAULT_SKIN_DEFINITION,
+  FRECKLE_PATTERNS,
+  normalizeSkinDefinition,
   type SkinDefinition,
   type SkinDefinitionPatch,
 } from './semanticSkin';
+import {
+  createMorphDraftHistory,
+  pushMorphDraftHistory,
+  redoMorphDraftHistory,
+  undoMorphDraftHistory,
+} from './draftMorphHistory';
+import { getMorphHistoryShortcut } from './morphHistoryShortcut';
+
+const ObjectWorkshop = lazy(() => import('./ObjectWorkshop').then(({ ObjectWorkshop: Workshop }) => ({ default: Workshop })));
+const CharacterViewportCanvas = lazy(() => import('./CharacterViewportCanvas'));
 
 type ApiComponent = {
   id: string;
@@ -32,6 +51,7 @@ type ApiComponent = {
   };
   cc3_morphs?: Partial<Record<CC3MorphControl, number>>;
   cc3_preset_id?: string | null;
+  cc3_head_preset_id?: string | null;
   morphs_baked?: boolean;
   bake_checkpoint_id?: string;
 };
@@ -39,12 +59,12 @@ type ApiAssetId =
   | 'character_cc3_morphs_v1'
   | 'character_cc3_male_morphs_v1'
   | 'character_cc5_rlcc3plus_all_morphs_v1';
-type ApiPhase = { id: string; phase_key: string; title: string; status: string };
+type ApiPhase = { id: string; phase_key: string; title: string; status: string; requires_approval?: boolean };
 type ApiReference = { id: string; display_name: string; mime_type: string; width: number; height: number };
 type ApiMessage = { id: string; role: 'assistant' | 'user'; content: string; created_at: string };
 type AssistantProposal = {
   morph_updates: Record<string, number>;
-  appearance_updates: Partial<{ eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null }>;
+  appearance_updates: Partial<{ eye_asset_id: string | null; body_preset_id: string | null; head_preset_id: string | null; skin_asset_id: string | null }>;
 };
 type AssistantGuidance = { target_id: string; title: string; message: string };
 type SkinInterpretation = {
@@ -53,9 +73,11 @@ type SkinInterpretation = {
   changed_properties: string[];
   explanation: string;
 };
-const landingCardIds = ['hero', 'assistant', 'new-projects', 'recent-projects', 'workflow'] as const;
+const landingCardIds = ['hero', 'assistant', 'new-projects', 'workflow', 'recent-projects'] as const;
 type LandingCardId = typeof landingCardIds[number];
-const defaultLandingCardOrder: LandingCardId[] = [...landingCardIds];
+const defaultLandingCardOrder: LandingCardId[] = ['hero', 'workflow', 'assistant', 'recent-projects', 'new-projects'];
+const priorLandingCardOrder: LandingCardId[] = [...landingCardIds];
+const previousDefaultLandingCardOrder: LandingCardId[] = ['hero', 'assistant', 'new-projects', 'recent-projects', 'workflow'];
 const landingCardLabels: Record<LandingCardId, string> = {
   hero: 'Welcome',
   assistant: 'Canvas assistant',
@@ -74,6 +96,9 @@ function loadLandingCardOrder(): LandingCardId[] {
     if (stored) {
       const parsed: unknown = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length === landingCardIds.length && parsed.every(isLandingCardId) && new Set(parsed).size === landingCardIds.length) {
+        if ([priorLandingCardOrder, previousDefaultLandingCardOrder].some((previousOrder) => parsed.every((id, index) => id === previousOrder[index]))) {
+          return [...defaultLandingCardOrder];
+        }
         return parsed;
       }
     }
@@ -96,7 +121,7 @@ type ApiProject = {
   scene_version: number;
   draft_morphs: Record<CC3MorphControl, number>;
   draft_revision: number;
-  draft_appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null };
+  draft_appearance: { eye_asset_id: string | null; body_preset_id: string | null; head_preset_id?: string | null; skin_asset_id: string | null };
   draft_skin_paint_strokes: SkinPaintStroke[];
   draft_skin_definition: SkinDefinition;
   draft_skin_revision: number;
@@ -104,10 +129,16 @@ type ApiProject = {
   mode: 'blender';
   components: ApiComponent[];
   phases: ApiPhase[];
+  operations?: ApiOperation[];
   component_plan: { id: string | null; display_name: string; semantic_type: string; optional: boolean }[];
   planning_metadata?: { summary?: string; warnings?: string[] };
   references?: ApiReference[];
   messages?: ApiMessage[];
+};
+type ApiOperation = {
+  tool_name: string;
+  scene_version: number;
+  rollback_checkpoint_id?: string | null;
 };
 type ApiProjectSummary = {
   id: string;
@@ -127,7 +158,7 @@ type ApiBaseModel = {
   morph_preview_mode: 'client' | 'server';
   morph_proxy_sha256?: string | null;
   morph_delta_sha256?: string | null;
-  morph_presets?: { id: string; label: string; glb_path?: string; glb_sha256?: string }[];
+  morph_presets?: { id: string; label: string; kind: CharacterPresetKind; glb_path?: string; glb_sha256?: string }[];
   requires_approval: boolean;
 };
 
@@ -448,146 +479,101 @@ function summarizeProject(project: ApiProject): ApiProjectSummary {
   };
 }
 
-class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = 'ApiRequestError';
-  }
-}
-
-async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-    ...options,
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    const detail = typeof body === 'object' && body && 'detail' in body ? body.detail : null;
-    const message = typeof detail === 'string'
-      ? detail
-      : detail && typeof detail === 'object' && 'message' in detail
-        ? String(detail.message)
-        : Array.isArray(detail)
-          ? detail.map((item) => {
-              if (!item || typeof item !== 'object') return String(item);
-              const path = 'loc' in item && Array.isArray(item.loc) ? item.loc.join('.') : 'request';
-              const error = 'msg' in item ? String(item.msg) : JSON.stringify(item);
-              return `${path}: ${error}`;
-            }).join('; ')
-          : typeof detail === 'object' && detail
-            ? JSON.stringify(detail)
-            : 'Request failed.';
-    throw new ApiRequestError(message, response.status);
-  }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
-
-function PreviewLoadingIndicator({ title = 'Loading character' }: { title?: string }) {
-  const { active, progress, item } = useProgress();
-  if (!active) return null;
-  const currentAsset = item.split('/').pop() || 'Preparing preview';
-  const percentage = Math.round(progress);
-  return (
-    <div className="preview-loading" role="status" aria-live="polite">
-      <span className="preview-loading-spinner" aria-hidden="true" />
-      <div className="preview-loading-copy">
-        <strong>{title}</strong>
-        <span>{currentAsset}</span>
-        <div className="preview-loading-track" role="progressbar" aria-label="Character preview loading" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
-          <span style={{ width: `${percentage}%` }} />
-        </div>
-      </div>
-      <output>{percentage}%</output>
-    </div>
-  );
-}
-
-class PreviewErrorBoundary extends Component<
-  { children: React.ReactNode; resetKey: string },
-  { error: Error | null; resetKey: string }
-> {
-  state = { error: null as Error | null, resetKey: this.props.resetKey };
-
-  static getDerivedStateFromProps(
-    props: { resetKey: string },
-    state: { error: Error | null; resetKey: string },
-  ) {
-    if (props.resetKey !== state.resetKey) {
-      return { error: null, resetKey: props.resetKey };
-    }
-    return null;
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-
-  componentDidCatch(error: Error) {
-    console.error('The 3D character preview failed to load.', error);
-  }
-
-  render() {
-    if (this.state.error) {
-      return <div className="preview-status is-error" role="alert">Character preview failed: {this.state.error.message}</div>;
-    }
-    return this.props.children;
-  }
-}
-
-function StudioBackdrop() {
-  return (
-    <group>
-      <mesh rotation-x={-Math.PI / 2} position={[0, -0.055, 0]} receiveShadow>
-        <planeGeometry args={[80, 80]} />
-        <meshStandardMaterial color="#242329" roughness={0.92} />
-      </mesh>
-      <mesh position={[0, -0.0345, 0]} receiveShadow>
-        <cylinderGeometry args={[1.16, 1.2, 0.045, 96]} />
-        <meshStandardMaterial color="#29282f" roughness={0.7} metalness={0.12} />
-      </mesh>
-      <mesh position={[0, -0.0045, 0]} receiveShadow>
-        <cylinderGeometry args={[1.08, 1.12, 0.018, 96]} />
-        <meshStandardMaterial color="#34323b" roughness={0.72} metalness={0.08} />
-      </mesh>
-      {[1.12, 0.88, 0.66].map((radius) => (
-        <mesh key={radius} rotation-x={-Math.PI / 2} position={[0, 0.006, 0]}>
-          <ringGeometry args={[radius, radius + 0.012, 96]} />
-          <meshBasicMaterial color="#77747f" transparent opacity={0.22} side={2} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function AdaptiveOrthographicCamera() {
-  const height = useThree((state) => state.size.height);
-  const zoom = Math.max(60, Math.min(210, height / 3.6));
-  return <OrthographicCamera makeDefault position={[0.35, 1.1, 5.2]} zoom={zoom} near={0.01} />;
-}
-
 export default function App() {
   const [project, setProject] = useState<ApiProject | null>(null);
+  const [account, setAccount] = useState<AuthAccount | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [authRetry, setAuthRetry] = useState(0);
+  const [zoomFitViewport, setZoomFitViewport] = useState<{ width: number; height: number } | null>(null);
+  const [objectWorkshopOpen, setObjectWorkshopOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<ApiProjectSummary[]>([]);
   const [apiReady, setApiReady] = useState(false);
   const [blenderAvailable, setBlenderAvailable] = useState(false);
   const [blenderError, setBlenderError] = useState('');
   const [apiError, setApiError] = useState('');
+  const [initialDataRetry, setInitialDataRetry] = useState(0);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
   const [savedProjectsLoading, setSavedProjectsLoading] = useState(true);
   const [savedProjectsError, setSavedProjectsError] = useState('');
   const [availableBaseModels, setAvailableBaseModels] = useState<ApiBaseModel[]>([]);
   const [eyeAssets, setEyeAssets] = useState<EyeAsset[]>([]);
   const [eyeAssetsLoading, setEyeAssetsLoading] = useState(true);
   const [eyeAssetsError, setEyeAssetsError] = useState('');
+  const [eyeAssetsRetry, setEyeAssetsRetry] = useState(0);
   const [skinAssets, setSkinAssets] = useState<SkinAsset[]>([]);
   const [skinAssetsLoading, setSkinAssetsLoading] = useState(true);
   const [skinAssetsError, setSkinAssetsError] = useState('');
+  const [skinAssetsRetry, setSkinAssetsRetry] = useState(0);
   const [skinPreviewError, setSkinPreviewError] = useState('');
   const [skinPaintEnabled, setSkinPaintEnabled] = useState(false);
   const [skinPaintColor, setSkinPaintColor] = useState('#c84051');
-  const [skinPaintTool, setSkinPaintTool] = useState<'paint' | 'erase'>('paint');
+  const [skinPaintTool, setSkinPaintTool] = useState<'paint' | 'freckles' | 'erase'>('paint');
   const [skinPaintSize, setSkinPaintSize] = useState(28);
   const [skinPaintOpacity, setSkinPaintOpacity] = useState(75);
+  const [skinPaintDraftStrokes, setSkinPaintDraftStrokes] = useState<SkinPaintStroke[]>([]);
+  const skinPaintDraftStrokesRef = useRef<SkinPaintStroke[]>([]);
+  const skinPaintSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [skinPaintPointerOnModel, setSkinPaintPointerOnModel] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setAuthLoading(true);
+    requestJson<AuthSession>('/auth/session').then((session) => {
+      if (!active) return;
+      setCsrfToken(session.csrf_token);
+      setAccount(session.account);
+      setAuthError('');
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setAuthError(error instanceof Error ? error.message : 'Account session could not be checked.');
+      setAccount(null);
+    }).finally(() => {
+      if (active) setAuthLoading(false);
+    });
+    return () => { active = false; };
+  }, [authRetry]);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 760px)');
+    const visualViewport = window.visualViewport;
+    const updateCompactWorkspace = () => setCompactWorkspace(
+      mediaQuery.matches || Boolean(visualViewport && visualViewport.scale > 1.25 && visualViewport.width < 760),
+    );
+    mediaQuery.addEventListener('change', updateCompactWorkspace);
+    visualViewport?.addEventListener('resize', updateCompactWorkspace);
+    window.addEventListener('resize', updateCompactWorkspace);
+    return () => {
+      mediaQuery.removeEventListener('change', updateCompactWorkspace);
+      visualViewport?.removeEventListener('resize', updateCompactWorkspace);
+      window.removeEventListener('resize', updateCompactWorkspace);
+    };
+  }, []);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const updateZoomFitViewport = () => {
+      const needsFit = viewport.scale > 1.25 && viewport.width < 760 && viewport.height < 420;
+      setZoomFitViewport(needsFit ? { width: viewport.width, height: viewport.height } : null);
+    };
+
+    updateZoomFitViewport();
+    viewport.addEventListener('resize', updateZoomFitViewport);
+    window.addEventListener('resize', updateZoomFitViewport);
+    return () => {
+      viewport.removeEventListener('resize', updateZoomFitViewport);
+      window.removeEventListener('resize', updateZoomFitViewport);
+    };
+  }, []);
+  useEffect(() => {
+    const canvas = viewportRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    canvas.style.cursor = skinPaintEnabled
+      ? (skinPaintPointerOnModel ? 'none' : 'crosshair')
+      : '';
+    return () => {
+      canvas.style.cursor = '';
+    };
+  }, [skinPaintEnabled, skinPaintPointerOnModel]);
   const [skinDefinitionDraft, setSkinDefinitionDraft] = useState<SkinDefinition>(DEFAULT_SKIN_DEFINITION);
   const [skinPrompt, setSkinPrompt] = useState('');
   const [skinInterpretation, setSkinInterpretation] = useState<SkinInterpretation | null>(null);
@@ -600,6 +586,7 @@ export default function App() {
   const [morphControlsByAsset, setMorphControlsByAsset] = useState<Partial<Record<ApiAssetId, CC3MorphControlSpec[]>>>({});
   const [morphControlsLoading, setMorphControlsLoading] = useState(true);
   const [morphControlsError, setMorphControlsError] = useState('');
+  const [morphControlsRetry, setMorphControlsRetry] = useState(0);
   const [projectName, setProjectName] = useState('My Project');
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [message, setMessage] = useState('');
@@ -608,9 +595,12 @@ export default function App() {
   const appearanceSaveInProgress = useRef(false);
   const [importingCharacter, setImportingCharacter] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [removingReferenceId, setRemovingReferenceId] = useState<string | null>(null);
+  const [referenceActionError, setReferenceActionError] = useState('');
   const [parts, setParts] = useState(defaultParts);
   const [morphs, setMorphs] = useState<Record<CC3MorphControl, number>>({});
-  const [activeBodyPresetId, setActiveBodyPresetId] = useState<string | null>(null);
+  const [morphHistory, setMorphHistory] = useState(() => createMorphDraftHistory<Record<CC3MorphControl, number>>());
+  const [activeBodyPresetIds, setActiveBodyPresetIds] = useState<CharacterPresetSelection>({ body: null, head: null });
   const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('saved');
   const [draftSaveError, setDraftSaveError] = useState('');
   const [draftSaveRetry, setDraftSaveRetry] = useState(0);
@@ -620,6 +610,9 @@ export default function App() {
     componentId: string;
     sceneVersion: number;
   } | null>(null);
+  const chooseViewportLayout = (layout: 'viewport' | 'balanced' | 'editor') => {
+    setViewportLayout(layout);
+  };
   const [serverMorphPreviewStatus, setServerMorphPreviewStatus] = useState<'idle' | 'updating' | 'error'>('idle');
   const [serverMorphPreviewError, setServerMorphPreviewError] = useState('');
   const [clientMorphPreviewStatus, setClientMorphPreviewStatus] = useState<'idle' | 'updating' | 'error'>('idle');
@@ -647,9 +640,40 @@ export default function App() {
   const [recentMorphIds, setRecentMorphIds] = useState<string[]>([]);
   const [cameraKey, setCameraKey] = useState(0);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'pan' | 'zoom'>('orbit');
+  const orbitControlsRef = useRef<OrbitControlsImpl | null>(null);
+  const [viewportCanvasReady, setViewportCanvasReady] = useState(false);
+  const notifyCanvasCreated = useCallback(() => setViewportCanvasReady(true), []);
+  const panModeButtonRef = useRef<HTMLButtonElement>(null);
   const [cameraProjection, setCameraProjection] = useState<'perspective' | 'orthographic'>('perspective');
-  const [characterDockWidth, setCharacterDockWidth] = useState(() => Math.min(760, Math.max(620, window.innerWidth * 0.54 - 86)));
+  const [characterDockWidth, setCharacterDockWidth] = useState(() => Math.min(
+    760,
+    Math.max(300, Math.min(window.innerWidth * 0.445, window.innerWidth * 0.848 - 320)),
+  ));
+  const [characterDockHeight, setCharacterDockHeight] = useState(48);
   const [characterDockResizing, setCharacterDockResizing] = useState(false);
+  const [compactWorkspace, setCompactWorkspace] = useState(() => {
+    const visualViewport = window.visualViewport;
+    return window.matchMedia('(max-width: 760px)').matches
+      || Boolean(visualViewport && visualViewport.scale > 1.25 && visualViewport.width < 760);
+  });
+  const [viewportLayout, setViewportLayout] = useState<'viewport' | 'balanced' | 'editor'>('balanced');
+  useEffect(() => {
+    const updateWorkspaceSize = () => {
+      if (compactWorkspace) {
+        setCharacterDockHeight(viewportLayout === 'viewport' ? 38 : viewportLayout === 'editor' ? 60 : 48);
+        return;
+      }
+      const maxWidth = Math.max(300, (workspaceRef.current?.clientWidth ?? window.innerWidth * 0.848) - 320);
+      setCharacterDockWidth(viewportLayout === 'viewport'
+        ? Math.min(440, maxWidth)
+        : viewportLayout === 'editor'
+          ? Math.min(760, maxWidth)
+          : Math.min(760, Math.max(300, Math.min(window.innerWidth * 0.445, maxWidth))));
+    };
+    updateWorkspaceSize();
+    window.addEventListener('resize', updateWorkspaceSize);
+    return () => window.removeEventListener('resize', updateWorkspaceSize);
+  }, [compactWorkspace, viewportLayout, project?.id]);
   const [lightingPreset, setLightingPreset] = useState<'cool' | 'warm'>('cool');
   const [fillLightsEnabled, setFillLightsEnabled] = useState(true);
   const [viewportFullscreen, setViewportFullscreen] = useState(false);
@@ -660,7 +684,7 @@ export default function App() {
   const [projectCreationError, setProjectCreationError] = useState('');
   const [selectedBaseModel, setSelectedBaseModel] = useState<ApiBaseModel['asset_id'] | null>(null);
   const [studioSection, setStudioSection] = useState<'scene' | 'models'>('models');
-  const [customizationCategory, setCustomizationCategory] = useState<'body' | 'eyes' | 'skin' | 'hair' | 'clothing' | 'accessories'>('body');
+  const [customizationCategory, setCustomizationCategory] = useState<'body' | 'eyes' | 'skin' | 'clothing' | 'accessories'>('body');
   const [savedProjectsOpen, setSavedProjectsOpen] = useState(false);
   const [landingSection, setLandingSection] = useState<'home' | 'projects'>('home');
   const [showAllLandingProjects, setShowAllLandingProjects] = useState(false);
@@ -669,15 +693,14 @@ export default function App() {
   const [draggingLandingCard, setDraggingLandingCard] = useState<LandingCardId | null>(null);
   const [landingDropTarget, setLandingDropTarget] = useState<LandingCardId | null>(null);
   const [chatOpen, setChatOpen] = useState(true);
+  useEffect(() => {
+    if (project && (zoomFitViewport || compactWorkspace)) setChatOpen(false);
+  }, [project?.id, zoomFitViewport !== null || compactWorkspace]);
   const [activeGuidance, setActiveGuidance] = useState<AssistantGuidance | null>(null);
   const [guidancePosition, setGuidancePosition] = useState<{ left: number; top: number; arrowLeft: number; placement: 'above' | 'below' } | null>(null);
-  const [composerDragging, setComposerDragging] = useState(false);
-  const [composerSize, setComposerSize] = useState({ width: 420, height: 400 });
-  const [composerPosition, setComposerPosition] = useState<{ left: number; top: number } | null>(null);
   const projectNameInput = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
-  const suppressChatToggleClick = useRef(false);
   const landingCardDragRef = useRef<{ cardId: LandingCardId; pointerId: number; startX: number; startY: number; moved: boolean; target: LandingCardId | null } | null>(null);
   const morphPreviewRequestId = useRef(0);
   const morphPreviewAbortController = useRef<AbortController | null>(null);
@@ -686,26 +709,198 @@ export default function App() {
   activeProjectId.current = project?.id ?? null;
   const latestMorphs = useRef(morphs);
   latestMorphs.current = morphs;
+  const morphHistoryRef = useRef(morphHistory);
+  morphHistoryRef.current = morphHistory;
+  const morphInteractionRef = useRef(false);
+  const morphGestureHistoryCaptured = useRef(false);
   const morphPreviewRetryTimeout = useRef<number | null>(null);
   const morphPreviewObjectUrl = useRef<string | null>(null);
-  const composerDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    offsetX: number;
-    offsetY: number;
-    width: number;
-    height: number;
-    started: boolean;
-    wasCollapsed: boolean;
-  } | null>(null);
-  const composerResizeRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  useEffect(() => {
+    const emptyHistory = createMorphDraftHistory<Record<CC3MorphControl, number>>();
+    morphHistoryRef.current = emptyHistory;
+    setMorphHistory(emptyHistory);
+    morphInteractionRef.current = false;
+    morphGestureHistoryCaptured.current = false;
+    setMorphInteractionActive(false);
+  }, [project?.id]);
+  useEffect(() => {
+    if (!project) setViewportCanvasReady(false);
+  }, [project?.id]);
+  useEffect(() => {
+    const canvas = viewportRef.current?.querySelector('canvas');
+    const panButton = panModeButtonRef.current;
+    if (!canvas || !panButton) return;
+
+    let ctrlZoomPointerId: number | null = null;
+    let panRequested = false;
+    let panRequestId = 0;
+    let suppressPanClick = false;
+    const startPan = (event: PointerEvent) => {
+      if (event.button !== 0 || event.pointerType === 'touch' || panRequested) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      panRequested = true;
+      const requestId = ++panRequestId;
+      suppressPanClick = true;
+      setCameraMode('pan');
+      setViewportControlError('');
+      try {
+        const request = canvas.requestPointerLock();
+        if (request && typeof request.then === 'function') {
+          void request.then(() => {
+            if (!panRequested && document.pointerLockElement === canvas) document.exitPointerLock();
+          }).catch(() => {
+            if (requestId !== panRequestId) return;
+            panRequested = false;
+            setViewportControlError('Pointer lock could not be activated. Check browser permissions and try again.');
+          });
+        }
+      } catch {
+        panRequested = false;
+        setViewportControlError('Pointer lock could not be activated. Check browser permissions and try again.');
+      }
+    };
+    const startNavigation = (event: PointerEvent) => {
+      const controls = orbitControlsRef.current;
+      if (event.button !== 1 || !(event.ctrlKey || event.metaKey) || !controls?.enabled) return;
+      ctrlZoomPointerId = event.pointerId;
+      controls.mouseButtons.MIDDLE = 1;
+    };
+    const stopLockedMouseEvent = (event: Event) => {
+      if (!panRequested) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.type === 'pointerup' || event.type === 'pointercancel' || event.type === 'mouseup') finishPan();
+    };
+    const stopPanClick = (event: MouseEvent) => {
+      if (!suppressPanClick) return;
+      suppressPanClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const panWithMovement = (event: MouseEvent) => {
+      if (!panRequested || document.pointerLockElement !== canvas) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const controls = orbitControlsRef.current;
+      if (!controls) return;
+      const bounds = canvas.getBoundingClientRect();
+      if (bounds.height <= 0) return;
+      const camera = controls.object;
+      let worldPerPixel: number;
+      if ('isOrthographicCamera' in camera && camera.isOrthographicCamera) {
+        worldPerPixel = (camera.top - camera.bottom) / camera.zoom / bounds.height;
+      } else if ('fov' in camera && typeof camera.fov === 'number') {
+        worldPerPixel = 2 * controls.getDistance() * Math.tan((camera.fov * Math.PI) / 360) / bounds.height;
+      } else {
+        return;
+      }
+      camera.updateMatrixWorld();
+      const matrix = camera.matrix.elements;
+      const movementX = -event.movementX * worldPerPixel;
+      const movementY = event.movementY * worldPerPixel;
+      const offsetX = matrix[0] * movementX + matrix[4] * movementY;
+      const offsetY = matrix[1] * movementX + matrix[5] * movementY;
+      const offsetZ = matrix[2] * movementX + matrix[6] * movementY;
+      camera.position.x += offsetX;
+      camera.position.y += offsetY;
+      camera.position.z += offsetZ;
+      controls.target.x += offsetX;
+      controls.target.y += offsetY;
+      controls.target.z += offsetZ;
+      controls.update();
+    };
+    const finishPan = () => {
+      if (panRequested) {
+        panRequested = false;
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+      }
+      window.setTimeout(() => {
+        suppressPanClick = false;
+      }, 0);
+    };
+    const onPointerLockChange = () => {
+      if (document.pointerLockElement === canvas) {
+        if (!panRequested) document.exitPointerLock();
+        return;
+      }
+      if (!panRequested) return;
+      panRequested = false;
+    };
+    const onPointerLockError = () => {
+      if (!panRequested) return;
+      panRequested = false;
+      setViewportControlError('Pointer lock could not be activated. Check browser permissions and try again.');
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') finishPan();
+    };
+    const onWindowBlur = () => finishPan();
+    const stopLockedKeyEvent = (event: KeyboardEvent) => {
+      if (!panRequested || document.pointerLockElement !== canvas || event.key === 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const finishNavigation = (event: PointerEvent) => {
+      if (event.pointerId !== ctrlZoomPointerId) return;
+      ctrlZoomPointerId = null;
+      const controls = orbitControlsRef.current;
+      if (controls) controls.mouseButtons.MIDDLE = 0;
+    };
+
+    panButton.addEventListener('pointerdown', startPan, true);
+    panButton.addEventListener('click', stopPanClick, true);
+    document.addEventListener('mousemove', panWithMovement, true);
+    document.addEventListener('mousemove', stopLockedMouseEvent, true);
+    document.addEventListener('pointerdown', stopLockedMouseEvent, true);
+    document.addEventListener('pointermove', stopLockedMouseEvent, true);
+    document.addEventListener('mousedown', stopLockedMouseEvent, true);
+    document.addEventListener('mouseup', stopLockedMouseEvent, true);
+    document.addEventListener('click', stopLockedMouseEvent, true);
+    document.addEventListener('pointerup', stopLockedMouseEvent, true);
+    document.addEventListener('pointercancel', stopLockedMouseEvent, true);
+    document.addEventListener('pointerup', finishPan, true);
+    document.addEventListener('mouseup', finishPan, true);
+    document.addEventListener('pointercancel', finishPan, true);
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('pointerlockerror', onPointerLockError);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('keydown', stopLockedKeyEvent, true);
+    document.addEventListener('keyup', stopLockedKeyEvent, true);
+    window.addEventListener('blur', onWindowBlur);
+    canvas.addEventListener('pointerdown', startNavigation, true);
+    window.addEventListener('pointerup', finishNavigation, true);
+    window.addEventListener('pointercancel', finishNavigation, true);
+    return () => {
+      panButton.removeEventListener('pointerdown', startPan, true);
+      panButton.removeEventListener('click', stopPanClick, true);
+      document.removeEventListener('mousemove', panWithMovement, true);
+      document.removeEventListener('mousemove', stopLockedMouseEvent, true);
+      document.removeEventListener('pointerdown', stopLockedMouseEvent, true);
+      document.removeEventListener('pointermove', stopLockedMouseEvent, true);
+      document.removeEventListener('mousedown', stopLockedMouseEvent, true);
+      document.removeEventListener('mouseup', stopLockedMouseEvent, true);
+      document.removeEventListener('click', stopLockedMouseEvent, true);
+      document.removeEventListener('pointerup', stopLockedMouseEvent, true);
+      document.removeEventListener('pointercancel', stopLockedMouseEvent, true);
+      document.removeEventListener('pointerup', finishPan, true);
+      document.removeEventListener('mouseup', finishPan, true);
+      document.removeEventListener('pointercancel', finishPan, true);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('pointerlockerror', onPointerLockError);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('keydown', stopLockedKeyEvent, true);
+      document.removeEventListener('keyup', stopLockedKeyEvent, true);
+      window.removeEventListener('blur', onWindowBlur);
+      canvas.removeEventListener('pointerdown', startNavigation, true);
+      window.removeEventListener('pointerup', finishNavigation, true);
+      window.removeEventListener('pointercancel', finishNavigation, true);
+      finishPan();
+      panRequestId += 1;
+      const controls = orbitControlsRef.current;
+      if (controls) controls.mouseButtons.MIDDLE = 0;
+    };
+  }, [cameraKey, cameraProjection, project?.id, viewportCanvasReady]);
   const projectAssetId = project?.base_model_asset_id
     ?? project?.components.find((item) => item.source_asset?.asset_id)?.source_asset?.asset_id;
   const activeAssetId = projectAssetId ?? selectedBaseModel;
@@ -730,7 +925,11 @@ export default function App() {
   );
   const visibleMorphControlCount = visibleControls.length;
   const savedMorphs = body?.cc3_morphs ?? project?.draft_morphs ?? {};
-  const savedBodyPresetId = body?.cc3_preset_id ?? null;
+  const savedBodyPresetIds = normalizeCharacterPresetSelection(
+    bodyPresets,
+    body?.cc3_preset_id ?? project?.draft_appearance?.body_preset_id,
+    body?.cc3_head_preset_id ?? project?.draft_appearance?.head_preset_id,
+  );
   const morphAreas = useMemo(() => {
     const counts = new Map<string, number>();
     for (const control of visibleControls) {
@@ -979,10 +1178,10 @@ export default function App() {
     () => morphPresetDeltaBaseUrl
       ? {
         ...morphs,
-        ...Object.fromEntries(bodyPresets.map(({ id }) => [id, activeBodyPresetId === id ? 1 : 0])),
+        ...Object.fromEntries(bodyPresets.map(({ id, kind }) => [id, activeBodyPresetIds[kind] === id ? 1 : 0])),
       }
       : morphs,
-    [activeBodyPresetId, bodyPresets, morphPresetDeltaBaseUrl, morphs],
+    [activeBodyPresetIds, bodyPresets, morphPresetDeltaBaseUrl, morphs],
   );
   const previewUrl = hasCharacter && project
     ? `${API_BASE}/projects/${project.id}/preview?scene_version=${project.scene_version}`
@@ -996,7 +1195,7 @@ export default function App() {
   const morphPreviewUrl = (
     morphPreviewEnabled
     || (hasCc5ClientMorphProxy && hasNonNeutralMorphs)
-    || (hasCc5ClientMorphProxy && activeBodyPresetId !== null)
+    || (hasCc5ClientMorphProxy && (activeBodyPresetIds.body !== null || activeBodyPresetIds.head !== null))
   )
     && !morphsBaked && morphPreviewAssetId && morphPreviewAssetHash
     && morphPreviewMode === 'client'
@@ -1014,7 +1213,8 @@ export default function App() {
   const referencePlan = project?.phases.find((phase) => phase.phase_key === 'reference_plan');
   const reviewPhase = project?.phases.find((phase) => phase.status === 'awaiting_review');
   const morphsDirty = controls.some(({ id }) => (morphs[id] ?? 0) !== (savedMorphs[id] ?? 0));
-  const bodyPresetDirty = activeBodyPresetId !== savedBodyPresetId;
+  const bodyPresetDirty = activeBodyPresetIds.body !== savedBodyPresetIds.body
+    || activeBodyPresetIds.head !== savedBodyPresetIds.head;
   const serverMorphPreviewUrl = serverMorphPreview
     && serverMorphPreview.projectId === project?.id
     && serverMorphPreview.componentId === body?.id
@@ -1044,11 +1244,14 @@ export default function App() {
       ])),
     }
     : null, [project?.base_model_asset_id, selectedDraftSkin]);
-  const skinPaintStrokes = project?.draft_skin_paint_strokes ?? [];
-  const savedSkinDefinition = project?.draft_skin_definition ?? DEFAULT_SKIN_DEFINITION;
+  const skinPaintStrokes = skinPaintDraftStrokes;
+  const savedSkinDefinition = normalizeSkinDefinition(project?.draft_skin_definition);
   const skinDefinitionDirty = Boolean(project)
     && JSON.stringify(skinDefinitionDraft) !== JSON.stringify(savedSkinDefinition);
-  const skinDefinitionPreview = skinInterpretation?.preview ?? skinDefinitionDraft;
+  const skinDefinitionPreview = useMemo(
+    () => normalizeSkinDefinition(skinInterpretation?.preview ?? skinDefinitionDraft),
+    [skinDefinitionDraft, skinInterpretation?.preview],
+  );
   const visibleParts = useMemo(
     () => Object.fromEntries(Object.entries(parts).map(([key, part]) => [key, part.visible])) as Record<ModelPartKey, boolean>,
     [parts],
@@ -1097,7 +1300,7 @@ export default function App() {
     setServerMorphPreviewError('');
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await fetch(`${API_BASE}/projects/${project.id}/morph-preview`, {
+        const response = await apiFetch(`/projects/${project.id}/morph-preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ morphs }),
@@ -1224,14 +1427,81 @@ export default function App() {
     }
     if (morphPreviewObjectUrl.current) URL.revokeObjectURL(morphPreviewObjectUrl.current);
   }, []);
+  const recordMorphEdit = useCallback(() => {
+    if (!project || morphControlsDisabled) return;
+    if (morphInteractionRef.current) {
+      if (morphGestureHistoryCaptured.current) return;
+      morphGestureHistoryCaptured.current = true;
+    }
+    const nextHistory = pushMorphDraftHistory(morphHistoryRef.current, latestMorphs.current);
+    morphHistoryRef.current = nextHistory;
+    setMorphHistory(nextHistory);
+  }, [morphControlsDisabled, project?.id]);
+  const beginMorphInteraction = useCallback(() => {
+    if (!morphInteractionRef.current) morphGestureHistoryCaptured.current = false;
+    morphInteractionRef.current = true;
+    setMorphInteractionActive(true);
+  }, []);
+  const endMorphInteraction = useCallback(() => {
+    morphInteractionRef.current = false;
+    morphGestureHistoryCaptured.current = false;
+    setMorphInteractionActive(false);
+  }, []);
+  const undoMorphEdit = useCallback(() => {
+    if (!project || morphControlsDisabled) return;
+    const result = undoMorphDraftHistory(morphHistoryRef.current, latestMorphs.current);
+    if (!result) return;
+    morphHistoryRef.current = result.history;
+    setMorphHistory(result.history);
+    setMorphs(result.values);
+    setMorphPreviewEnabled(true);
+    endMorphInteraction();
+  }, [endMorphInteraction, morphControlsDisabled, project?.id]);
+  const redoMorphEdit = useCallback(() => {
+    if (!project || morphControlsDisabled) return;
+    const result = redoMorphDraftHistory(morphHistoryRef.current, latestMorphs.current);
+    if (!result) return;
+    morphHistoryRef.current = result.history;
+    setMorphHistory(result.history);
+    setMorphs(result.values);
+    setMorphPreviewEnabled(true);
+    endMorphInteraction();
+  }, [endMorphInteraction, morphControlsDisabled, project?.id]);
+  useEffect(() => {
+    function handleHistoryShortcut(event: KeyboardEvent) {
+      const target = event.target;
+      const editableTarget = target instanceof HTMLElement
+        && (target.isContentEditable || target.closest('input, textarea, select, [role="textbox"]') !== null);
+      const action = getMorphHistoryShortcut(event, editableTarget);
+      if (!action || !project || morphControlsDisabled || running) return;
+      if (action === 'undo' && morphHistory.past.length === 0) return;
+      if (action === 'redo' && morphHistory.future.length === 0) return;
+      event.preventDefault();
+      if (action === 'undo') undoMorphEdit();
+      else redoMorphEdit();
+    }
+
+    window.addEventListener('keydown', handleHistoryShortcut);
+    return () => window.removeEventListener('keydown', handleHistoryShortcut);
+  }, [
+    morphControlsDisabled,
+    morphHistory.future.length,
+    morphHistory.past.length,
+    project,
+    redoMorphEdit,
+    running,
+    undoMorphEdit,
+  ]);
   const updateMorph = useCallback((id: CC3MorphControl, value: number) => {
     if (morphControlsDisabled) return;
+    if ((latestMorphs.current[id] ?? 0) === value) return;
+    recordMorphEdit();
     setMorphs((current) => ({ ...current, [id]: value }));
     setRecentMorphIds((current) => current[0] === id
       ? current
       : [id, ...current.filter((recentId) => recentId !== id)].slice(0, 12));
     setMorphPreviewEnabled(true);
-  }, [morphControlsDisabled]);
+  }, [morphControlsDisabled, project?.id, recordMorphEdit]);
   useEffect(() => {
     if (!morphAreas.some(({ id }) => id === selectedBodyArea)) {
       setSelectedBodyArea(morphAreas.find(({ id }) => id === 'body')?.id ?? morphAreas[0]?.id ?? '');
@@ -1258,10 +1528,14 @@ export default function App() {
     setSelectedMorphId(control.id);
   };
   const resetMorphs = () => {
+    if (!controls.some(({ id }) => (morphs[id] ?? 0) !== 0)) return;
+    recordMorphEdit();
     setMorphs(Object.fromEntries(controls.map(({ id }) => [id, 0])));
   };
   const resetMorphArea = () => {
     if (!activeBodyArea) return;
+    if (!bodyAreaControls.some(({ id }) => (morphs[id] ?? 0) !== 0)) return;
+    recordMorphEdit();
     setMorphs((current) => {
       const next = { ...current };
       for (const { id } of bodyAreaControls) next[id] = 0;
@@ -1273,7 +1547,11 @@ export default function App() {
   };
   const applyElvenEarPresetToDraft = () => {
     if (!elvenEarPresetAvailable || morphControlsDisabled || running) return;
-    setMorphs((current) => applyElvenEarPreset(current));
+    const nextMorphs = applyElvenEarPreset(morphs);
+    if (controls.some(({ id }) => (morphs[id] ?? 0) !== (nextMorphs[id] ?? 0))) {
+      recordMorphEdit();
+    }
+    setMorphs(nextMorphs);
     setSelectedBodyArea('ears');
     setSelectedBodyMorphGroupId(null);
     setSelectedEarMorphGroupId('tip');
@@ -1382,85 +1660,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', closeSavedProjectsOnEscape);
   }, []);
 
-  useEffect(() => {
-    function moveComposer(event: PointerEvent) {
-      const resize = composerResizeRef.current;
-      if (resize?.pointerId === event.pointerId) {
-        const minWidth = Math.min(320, window.innerWidth - 24);
-        const minHeight = Math.min(360, window.innerHeight - 80);
-        const maxWidth = Math.max(minWidth, Math.min(760, window.innerWidth - 24));
-        const maxHeight = Math.max(minHeight, Math.min(760, window.innerHeight - 80));
-        setComposerSize({
-          width: Math.min(maxWidth, Math.max(minWidth, resize.width + event.clientX - resize.startX)),
-          height: Math.min(maxHeight, Math.max(minHeight, resize.height + event.clientY - resize.startY)),
-        });
-        return;
-      }
-
-      const drag = composerDragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      if (!drag.started && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
-      drag.started = true;
-      setComposerDragging(true);
-      const maxLeft = Math.max(8, window.innerWidth - drag.width - 8);
-      const maxTop = Math.max(8, window.innerHeight - drag.height - 8);
-      setComposerPosition({
-        left: Math.min(Math.max(8, event.clientX - drag.offsetX), maxLeft),
-        top: Math.min(Math.max(8, event.clientY - drag.offsetY), maxTop),
-      });
-    }
-
-    function finishComposerDrag(event: PointerEvent) {
-      if (composerResizeRef.current?.pointerId === event.pointerId) {
-        composerResizeRef.current = null;
-        return;
-      }
-      const drag = composerDragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      if (drag.started) {
-        suppressChatToggleClick.current = drag.wasCollapsed;
-        if (drag.wasCollapsed) {
-          window.setTimeout(() => { suppressChatToggleClick.current = false; }, 500);
-        }
-        setComposerDragging(false);
-      }
-      composerDragRef.current = null;
-    }
-
-    function cancelComposerDrag(event: PointerEvent) {
-      if (composerResizeRef.current?.pointerId === event.pointerId) {
-        composerResizeRef.current = null;
-        return;
-      }
-      if (composerDragRef.current?.pointerId !== event.pointerId) return;
-      if (composerDragRef.current.started) setComposerDragging(false);
-      composerDragRef.current = null;
-    }
-
-    function keepFloatingComposerInViewport() {
-      setComposerPosition((position) => {
-        if (!position) return null;
-        const bounds = document.querySelector('.chat-widget')?.getBoundingClientRect();
-        if (!bounds) return position;
-        return {
-          left: Math.min(Math.max(8, position.left), Math.max(8, window.innerWidth - bounds.width - 8)),
-          top: Math.min(Math.max(8, position.top), Math.max(8, window.innerHeight - bounds.height - 8)),
-        };
-      });
-    }
-
-    window.addEventListener('pointermove', moveComposer);
-    window.addEventListener('pointerup', finishComposerDrag);
-    window.addEventListener('pointercancel', cancelComposerDrag);
-    window.addEventListener('resize', keepFloatingComposerInViewport);
-    return () => {
-      window.removeEventListener('pointermove', moveComposer);
-      window.removeEventListener('pointerup', finishComposerDrag);
-      window.removeEventListener('pointercancel', cancelComposerDrag);
-      window.removeEventListener('resize', keepFloatingComposerInViewport);
-    };
-  }, []);
-
   function applyProject(next: ApiProject, resetCamera = true) {
     const changingProject = activeProjectId.current !== next.id;
     const changingSkin = project?.draft_appearance?.skin_asset_id !== next.draft_appearance?.skin_asset_id;
@@ -1472,18 +1671,27 @@ export default function App() {
       ?? assetComponent?.source_asset?.asset_id;
     if (selectedAssetId) setSelectedBaseModel(selectedAssetId);
     const savedMorphs = assetComponent?.cc3_morphs ?? next.draft_morphs ?? {};
-    const savedPresetId = assetComponent?.cc3_preset_id ?? next.draft_appearance?.body_preset_id ?? null;
+    const savedPresetIds = normalizeCharacterPresetSelection(
+      bodyPresets,
+      assetComponent?.cc3_preset_id ?? next.draft_appearance?.body_preset_id,
+      assetComponent?.cc3_head_preset_id ?? next.draft_appearance?.head_preset_id,
+    );
     const preserveLocalDraft = activeProjectId.current === next.id
       && !assetComponent
       && (
         controls.some(({ id }) => (latestMorphs.current[id] ?? 0) !== (savedMorphs[id] ?? 0))
-        || activeBodyPresetId !== savedPresetId
+        || activeBodyPresetIds.body !== savedPresetIds.body
+        || activeBodyPresetIds.head !== savedPresetIds.head
       );
-    const preserveLocalPreset = !next.draft_appearance && preserveLocalDraft && savedPresetId === null && activeBodyPresetId !== null;
-    setProject(next);
-    if (!preserveLocalSkinDraft) setSkinDefinitionDraft(next.draft_skin_definition ?? DEFAULT_SKIN_DEFINITION);
+    const skinDefinition = normalizeSkinDefinition(next.draft_skin_definition);
+    setProject({ ...next, draft_skin_definition: skinDefinition });
+    const nextPaintStrokes = next.draft_skin_paint_strokes ?? [];
+    skinPaintDraftStrokesRef.current = nextPaintStrokes;
+    setSkinPaintDraftStrokes(nextPaintStrokes);
+    if (!preserveLocalSkinDraft) setSkinDefinitionDraft(skinDefinition);
     if (changingProject) {
       setSkinPrompt('');
+      setReferenceActionError('');
     }
     if (changingProject || changingSkin) {
       setSkinInterpretation(null);
@@ -1491,7 +1699,7 @@ export default function App() {
     }
     if (changingProject || assetComponent) setSkinPaintEnabled(false);
     setProjectName(next.name);
-    setActiveBodyPresetId(preserveLocalPreset ? activeBodyPresetId : savedPresetId);
+    setActiveBodyPresetIds(preserveLocalDraft ? activeBodyPresetIds : savedPresetIds);
     if (!preserveLocalDraft) {
       setMorphs(Object.fromEntries(Object.entries(savedMorphs).map(([id, value]) => [id, value ?? 0])));
       setDraftSaveStatus('saved');
@@ -1500,13 +1708,30 @@ export default function App() {
     setParts(defaultParts);
     setSelectedPart(assetComponent ? 'body' : null);
     setMorphPreviewEnabled((enabled) => preserveLocalDraft
-      ? enabled || Object.values(latestMorphs.current).some((value) => value !== 0) || preserveLocalPreset
-      : Object.values(savedMorphs).some((value) => value !== 0) || savedPresetId !== null);
+      ? enabled || Object.values(latestMorphs.current).some((value) => value !== 0)
+        || activeBodyPresetIds.body !== null || activeBodyPresetIds.head !== null
+      : Object.values(savedMorphs).some((value) => value !== 0)
+        || savedPresetIds.body !== null || savedPresetIds.head !== null);
     if (resetCamera) setCameraKey((key) => key + 1);
   }
 
   useEffect(() => {
+    if (authLoading || !account) {
+      setInitialDataLoading(false);
+      setSavedProjectsLoading(false);
+      return;
+    }
     let active = true;
+    let remainingRequests = 3;
+    const finishRequest = () => {
+      remainingRequests -= 1;
+      if (active && remainingRequests === 0) setInitialDataLoading(false);
+    };
+    setInitialDataLoading(true);
+    setSavedProjectsLoading(true);
+    setSavedProjectsError('');
+    setBaseModelsLoading(true);
+    setBaseModelsError('');
     requestJson<ApiHealth>('/health').then((health) => {
       if (!active) return;
       setApiReady(true);
@@ -1518,7 +1743,7 @@ export default function App() {
       setApiError(error instanceof Error ? error.message : 'The local Blender API is unavailable.');
       setApiReady(false);
       setBlenderAvailable(false);
-    });
+    }).finally(finishRequest);
     requestJson<ApiProjectSummary[]>('/projects/summary').then((projects) => {
       if (!active) return;
       setSavedProjects(projects);
@@ -1528,7 +1753,7 @@ export default function App() {
       if (!active) return;
       setSavedProjectsError(error instanceof Error ? error.message : 'Saved projects could not be loaded.');
       setSavedProjectsLoading(false);
-    });
+    }).finally(finishRequest);
     requestJson<ApiBaseModel[]>('/models').then((models) => {
       if (!active) return;
       const available = models.filter((model) => model.category === 'character');
@@ -1542,7 +1767,14 @@ export default function App() {
       if (!active) return;
       setBaseModelsError(error instanceof Error ? error.message : 'Available base models could not be loaded.');
       setBaseModelsLoading(false);
-    });
+    }).finally(finishRequest);
+    return () => { active = false; };
+  }, [account?.id, authLoading, initialDataRetry]);
+  useEffect(() => {
+    if (!project) return;
+    let active = true;
+    setEyeAssetsLoading(true);
+    setEyeAssetsError('');
     requestJson<EyeAsset[]>('/assets/eyes').then((assets) => {
       if (!active) return;
       setEyeAssets(assets);
@@ -1553,6 +1785,13 @@ export default function App() {
       setEyeAssetsError(error instanceof Error ? error.message : 'Eye assets could not be loaded.');
       setEyeAssetsLoading(false);
     });
+    return () => { active = false; };
+  }, [eyeAssetsRetry, project?.id]);
+  useEffect(() => {
+    if (!project) return;
+    let active = true;
+    setSkinAssetsLoading(true);
+    setSkinAssetsError('');
     requestJson<SkinAsset[]>('/assets/skins').then((assets) => {
       if (!active) return;
       setSkinAssets(assets);
@@ -1564,7 +1803,7 @@ export default function App() {
       setSkinAssetsLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [project?.id, skinAssetsRetry]);
   useEffect(() => {
     if (!hasActiveProject && !selectedBaseModel) {
       setMorphControlsLoading(false);
@@ -1594,6 +1833,9 @@ export default function App() {
     setMorphControlsError('');
     requestJson<CC3MorphControlSpec[]>(`/models/${morphControlsAssetId}/morph-controls`).then((assetControls) => {
       if (!active) return;
+      if (assetControls.length === 0) {
+        throw new Error('No manifest-backed character controls were returned for this model.');
+      }
       setMorphControlsByAsset((current) => ({ ...current, [morphControlsAssetId]: assetControls }));
       setMorphControlsLoading(false);
     }).catch((error: unknown) => {
@@ -1602,7 +1844,20 @@ export default function App() {
       setMorphControlsLoading(false);
     });
     return () => { active = false; };
-  }, [availableBaseModels, baseModelsError, baseModelsLoading, body?.source_asset?.morph_control_specs, hasActiveProject, morphControlsAssetId, morphControlsByAsset, selectedBaseModel]);
+  }, [availableBaseModels, baseModelsError, baseModelsLoading, body?.source_asset?.morph_control_specs, hasActiveProject, morphControlsAssetId, morphControlsByAsset, morphControlsRetry, selectedBaseModel]);
+
+  function retryMorphControls() {
+    if (!availableBaseModels.some(({ asset_id }) => asset_id === morphControlsAssetId)) {
+      setInitialDataRetry((retry) => retry + 1);
+      return;
+    }
+    setMorphControlsByAsset((current) => {
+      const next = { ...current };
+      delete next[morphControlsAssetId];
+      return next;
+    });
+    setMorphControlsRetry((retry) => retry + 1);
+  }
 
   function openNewProject() {
     if (skinDefinitionDirty || skinDefinitionSaving) return;
@@ -1700,12 +1955,29 @@ export default function App() {
     }
   }
 
+  function acceptAccountSession(session: AuthSession) {
+    setCsrfToken(session.csrf_token);
+    setAccount(session.account);
+    setAuthError('');
+  }
+
+  async function signOut() {
+    await requestJson<void>('/auth/logout', { method: 'POST' });
+    setCsrfToken(null);
+    setAccount(null);
+    setProject(null);
+    setSavedProjects([]);
+    setSavedProjectsError('');
+    setApiReady(false);
+    setChat([]);
+  }
+
   function returnToWelcome() {
     if (running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty || skinDefinitionDirty || skinDefinitionSaving) return;
     setProject(null);
     setSelectedBaseModel(null);
     setSavedProjectsOpen(false);
-    setChatOpen(false);
+    setChatOpen(true);
     setStudioSection('models');
   }
 
@@ -1722,7 +1994,7 @@ export default function App() {
   }
 
   async function deleteProject(id: string, name: string) {
-    if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete "${name}" and its reference images, checkpoints, and scene files? This cannot be undone.`)) return;
     await requestJson<void>(`/projects/${id}`, { method: 'DELETE' });
     setSavedProjects((projects) => projects.filter((item) => item.id !== id));
     if (project?.id === id) openNewProject();
@@ -1755,9 +2027,13 @@ export default function App() {
           dependency_component_ids: [],
           arguments: {
             asset_id: assetId,
-            preset_id: projectToImport.draft_appearance
-              ? projectToImport.draft_appearance.body_preset_id
-              : activeBodyPresetId,
+            preset_ids: projectToImport.draft_appearance
+              ? normalizeCharacterPresetSelection(
+                bodyPresets,
+                projectToImport.draft_appearance.body_preset_id,
+                projectToImport.draft_appearance.head_preset_id,
+              )
+              : activeBodyPresetIds,
             skin_asset_id: projectToImport.draft_appearance?.skin_asset_id ?? null,
             skin_paint_strokes: projectToImport.draft_skin_paint_strokes ?? [],
             ...(projectToImport.draft_appearance?.skin_asset_id
@@ -1768,7 +2044,7 @@ export default function App() {
       });
       applyProject(result.project);
       setSavedProjects((projects) => [summarizeProject(result.project), ...projects.filter((item) => item.id !== result.project.id)]);
-      setChat((items) => [...items, { role: 'assistant', text: `Saved and compiled the ${availableBaseModels.find((model) => model.asset_id === assetId)?.name ?? 'character'} in Blender, including the tracked morph, preset, and eye choices.` }]);
+      setChat((items) => [...items, { role: 'assistant', text: `Saved and compiled the ${availableBaseModels.find((model) => model.asset_id === assetId)?.name ?? 'character'} in Blender, including the tracked morph, preset, eye, and skin choices.` }]);
     } finally {
       setImportingCharacter(false);
     }
@@ -1791,7 +2067,7 @@ export default function App() {
           component_id: body.id,
           asset_id: assetId,
           morphs,
-          ...(bodyPresetDirty ? { preset_id: activeBodyPresetId } : {}),
+          ...(bodyPresetDirty ? { preset_ids: activeBodyPresetIds } : {}),
         },
       }),
     });
@@ -1805,7 +2081,7 @@ export default function App() {
   }
 
   async function updateDraftAppearance(
-    appearance: { eye_asset_id: string | null; body_preset_id: string | null; skin_asset_id: string | null },
+    appearance: { eye_asset_id: string | null; body_preset_id: string | null; head_preset_id?: string | null; skin_asset_id: string | null },
     paintStrokes?: SkinPaintStroke[],
   ) {
     if (appearanceSaveInProgress.current) throw new Error('Wait for the current appearance change to finish saving.');
@@ -1832,7 +2108,8 @@ export default function App() {
   async function selectDraftEye(assetId: string | null) {
     const appearance = project?.draft_appearance ?? {
       eye_asset_id: null,
-      body_preset_id: activeBodyPresetId,
+      body_preset_id: activeBodyPresetIds.body,
+      head_preset_id: activeBodyPresetIds.head,
       skin_asset_id: null,
     };
     await updateDraftAppearance({ ...appearance, eye_asset_id: assetId });
@@ -1893,16 +2170,43 @@ export default function App() {
     await saveSkinDefinition(skinInterpretation.preview);
   }
 
-  async function selectDraftPreset(presetId: string | null) {
-    const appearance = project?.draft_appearance ?? { eye_asset_id: null, body_preset_id: null, skin_asset_id: null };
-    await updateDraftAppearance({ ...appearance, body_preset_id: presetId });
+  async function selectDraftPreset(kind: CharacterPresetKind, presetId: string | null) {
+    const appearance = project?.draft_appearance ?? {
+      eye_asset_id: null,
+      body_preset_id: activeBodyPresetIds.body,
+      head_preset_id: activeBodyPresetIds.head,
+      skin_asset_id: null,
+    };
+    const selected = selectCharacterPreset(activeBodyPresetIds, kind, presetId);
+    await updateDraftAppearance({
+      ...appearance,
+      body_preset_id: selected.body,
+      head_preset_id: selected.head,
+    });
+    setActiveBodyPresetIds(selected);
     setMorphPreviewEnabled(true);
+  }
+
+  async function clearDraftPresets() {
+    const appearance = project?.draft_appearance ?? {
+      eye_asset_id: null,
+      body_preset_id: activeBodyPresetIds.body,
+      head_preset_id: activeBodyPresetIds.head,
+      skin_asset_id: null,
+    };
+    await updateDraftAppearance({
+      ...appearance,
+      body_preset_id: null,
+      head_preset_id: null,
+    });
+    setActiveBodyPresetIds({ body: null, head: null });
   }
 
   async function selectDraftSkin(assetId: string | null) {
     const appearance = project?.draft_appearance ?? {
       eye_asset_id: null,
-      body_preset_id: activeBodyPresetId,
+      body_preset_id: activeBodyPresetIds.body,
+      head_preset_id: activeBodyPresetIds.head,
       skin_asset_id: null,
     };
     await updateDraftAppearance(
@@ -1914,20 +2218,50 @@ export default function App() {
   async function appendSkinPaintStrokes(strokes: SkinPaintStroke[]) {
     if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before painting.');
     if (hasCharacter) throw new Error('Skin painting is available only in a draft before compilation.');
-    const savedStrokes = project.draft_skin_paint_strokes ?? [];
-    if (savedStrokes.length + strokes.length > 500) {
-      throw new Error('This draft has reached the 500-stroke limit. Undo or clear strokes before painting more.');
-    }
-    if ([...savedStrokes, ...strokes].reduce((total, stroke) => total + stroke.points.length, 0) > 20_000) {
-      throw new Error('This draft has reached the 20,000-point paint limit. Undo or clear strokes before painting more.');
-    }
-    await updateDraftAppearance(project.draft_appearance, [...savedStrokes, ...strokes]);
+    const queuedSave = skinPaintSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const savedStrokes = skinPaintDraftStrokesRef.current;
+      if (savedStrokes.length + strokes.length > 500) {
+        throw new Error('This draft has reached the 500-stroke limit. Undo or clear strokes before painting more.');
+      }
+      if ([...savedStrokes, ...strokes].reduce((total, stroke) => total + stroke.points.length, 0) > 20_000) {
+        throw new Error('This draft has reached the 20,000-point paint limit. Undo or clear strokes before painting more.');
+      }
+      const nextStrokes = [...savedStrokes, ...strokes];
+      skinPaintDraftStrokesRef.current = nextStrokes;
+      setSkinPaintDraftStrokes(nextStrokes);
+      try {
+        await updateDraftAppearance(project.draft_appearance, nextStrokes);
+      } catch (error) {
+        if (skinPaintDraftStrokesRef.current === nextStrokes) {
+          skinPaintDraftStrokesRef.current = savedStrokes;
+          setSkinPaintDraftStrokes(savedStrokes);
+        }
+        throw error;
+      }
+    });
+    skinPaintSaveQueueRef.current = queuedSave;
+    await queuedSave;
   }
 
   async function saveSkinPaintStrokes(strokes: SkinPaintStroke[]) {
     if (!project || !selectedDraftSkin) throw new Error('Select a skin asset before editing paint strokes.');
     if (hasCharacter) throw new Error('Skin painting is available only in a draft before compilation.');
-    await updateDraftAppearance(project.draft_appearance, strokes);
+    const queuedSave = skinPaintSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const savedStrokes = skinPaintDraftStrokesRef.current;
+      skinPaintDraftStrokesRef.current = strokes;
+      setSkinPaintDraftStrokes(strokes);
+      try {
+        await updateDraftAppearance(project.draft_appearance, strokes);
+      } catch (error) {
+        if (skinPaintDraftStrokesRef.current === strokes) {
+          skinPaintDraftStrokesRef.current = savedStrokes;
+          setSkinPaintDraftStrokes(savedStrokes);
+        }
+        throw error;
+      }
+    });
+    skinPaintSaveQueueRef.current = queuedSave;
+    await queuedSave;
   }
 
   async function bakeMorphs() {
@@ -1971,10 +2305,11 @@ export default function App() {
       return;
     }
     setUploading(true);
+    setReferenceActionError('');
     try {
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch(`${API_BASE}/projects/${project.id}/references`, { method: 'POST', body: form });
+      const response = await apiFetch(`/projects/${project.id}/references`, { method: 'POST', body: form });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null;
@@ -1984,9 +2319,33 @@ export default function App() {
       applyProject(loaded);
       setChat((items) => [...items, { role: 'assistant', text: 'Reference image stored with this project.' }]);
     } catch (error) {
-      setChat((items) => [...items, { role: 'assistant', text: `Reference upload failed: ${error instanceof Error ? error.message : 'unknown error'}` }]);
+      const message = error instanceof Error ? error.message : 'unknown error';
+      setReferenceActionError(`Reference upload failed: ${message}`);
+      setChat((items) => [...items, { role: 'assistant', text: `Reference upload failed: ${message}` }]);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function removeReference(reference: ApiReference) {
+    if (!project) throw new Error('Open a project before removing a reference.');
+    if (!window.confirm(`Remove reference "${reference.display_name}" from this project?`)) return;
+    setRemovingReferenceId(reference.id);
+    setReferenceActionError('');
+    try {
+      await requestJson<void>(
+        `/projects/${project.id}/references/${encodeURIComponent(reference.id)}`,
+        { method: 'DELETE' },
+      );
+      setProject((current) => current?.id === project.id
+        ? { ...current, references: (current.references ?? []).filter(({ id }) => id !== reference.id) }
+        : current);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      setReferenceActionError(`Reference removal failed: ${message}`);
+      throw error;
+    } finally {
+      setRemovingReferenceId(null);
     }
   }
 
@@ -2103,6 +2462,12 @@ export default function App() {
     }
 
     if (Object.keys(morphUpdates).length > 0) {
+      if (controls.some(({ id }) => Object.hasOwn(morphUpdates, id)
+        && (latestMorphs.current[id] ?? 0) !== morphUpdates[id])) {
+        recordMorphEdit();
+      }
+      morphInteractionRef.current = false;
+      morphGestureHistoryCaptured.current = false;
       setMorphInteractionActive(false);
       setMorphs((current) => ({ ...current, ...morphUpdates }));
       setRecentMorphIds((current) => [
@@ -2171,59 +2536,6 @@ export default function App() {
     }
   }
 
-  function startComposerDrag(event: React.PointerEvent<HTMLElement>) {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (!(event.target instanceof Element)) return;
-    const target = event.target;
-    if (target.closest('textarea, input, button, select, a, label') && !target.closest('.chat-launcher')) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    composerDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      offsetX: event.clientX - bounds.left,
-      offsetY: event.clientY - bounds.top,
-      width: bounds.width,
-      height: bounds.height,
-      started: false,
-      wasCollapsed: !chatOpen,
-    };
-    if (chatOpen) setComposerSize({ width: bounds.width, height: bounds.height });
-  }
-
-  function startComposerResize(event: React.PointerEvent<HTMLButtonElement>) {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const bounds = event.currentTarget.closest('.chat-widget')?.getBoundingClientRect();
-    if (!bounds) return;
-    composerResizeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      width: bounds.width,
-      height: bounds.height,
-    };
-  }
-
-  function resizeComposerByKeyboard(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const step = event.shiftKey ? 40 : 16;
-    const widthDelta = event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0;
-    const heightDelta = event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0;
-    if (!widthDelta && !heightDelta) return;
-    event.preventDefault();
-    setComposerSize((size) => {
-      const minWidth = Math.min(320, window.innerWidth - 24);
-      const minHeight = Math.min(360, window.innerHeight - 80);
-      const maxWidth = Math.max(minWidth, Math.min(760, window.innerWidth - 24));
-      const maxHeight = Math.max(minHeight, Math.min(760, window.innerHeight - 80));
-      return {
-        width: Math.min(maxWidth, Math.max(minWidth, size.width + widthDelta)),
-        height: Math.min(maxHeight, Math.max(minHeight, size.height + heightDelta)),
-      };
-    });
-  }
-
   useEffect(() => {
     function syncViewportFullscreen() {
       setViewportFullscreen(document.fullscreenElement === viewportRef.current);
@@ -2253,24 +2565,12 @@ export default function App() {
 
   const chatWidget = (
     <section
-      className={`chat-widget${chatOpen ? ' is-open' : ' is-collapsed'}${!project ? ' landing-chat-widget' : ''}${composerDragging ? ' is-dragging' : ''}${project && composerPosition ? ' is-floating' : ''}`}
-      style={project && composerPosition ? {
-        position: 'fixed',
-        left: composerPosition.left,
-        top: composerPosition.top,
-        right: 'auto',
-        bottom: 'auto',
-        ...(chatOpen ? { width: composerSize.width, height: composerSize.height } : {}),
-      } : project && chatOpen ? {
-        width: composerSize.width,
-        height: composerSize.height,
-      } : undefined}
+      className={`chat-widget${chatOpen ? ' is-open' : ' is-collapsed'}${!project ? ' landing-chat-widget' : ''}`}
       aria-label="Studio chat"
-      onPointerDown={project ? startComposerDrag : undefined}
     >
       {chatOpen ? <>
         <header className="chat-widget-header">
-        <div className="chat-widget-title"><Sparkles size={19} /><strong>{project ? 'AI Assistant' : 'Chat with Canvas'}</strong></div>
+        <div className="chat-widget-title"><Sparkles size={19} /><strong>{project ? 'Chat' : 'Chat with Canvas'}</strong></div>
         {!project && <span className={`landing-online-status${apiReady ? ' is-ready' : apiError ? ' is-offline' : ' is-connecting'}`}><span /> {apiReady ? 'Online' : apiError ? 'Offline' : 'Connecting'}</span>}
         <div className="chat-widget-actions">
           <button className="chat-widget-action" type="button" aria-label="Collapse chat" title="Collapse chat" onClick={() => setChatOpen(false)}><ChevronDown size={17} /></button>
@@ -2313,10 +2613,12 @@ export default function App() {
           {!project && <div className="landing-chat-shortcuts" aria-label="Assistant suggestions">
             <button type="button" onClick={openNewProject}><Plus size={14} /> Create a new project <ChevronRight size={14} /></button>
             <button type="button" onClick={() => setMessage('What can I create with the installed character models?')}><Box size={14} /> Explore character creation <ChevronRight size={14} /></button>
-            <button type="button" onClick={() => setMessage('Help me choose a character model.')}><CircleHelp size={14} /> Help me choose a model <ChevronRight size={14} /></button>
           </div>}
         </div>}
-        {apiError && <p className="workspace-alert" role="alert">{apiError}. Configure Blender and restart the API.</p>}
+        {apiError && <div className="workspace-alert" role="alert">
+          <span>{apiError}. Check that the local API is running.</span>
+          <button className="initial-data-retry" type="button" disabled={initialDataLoading} onClick={() => setInitialDataRetry((retry) => retry + 1)}>{initialDataLoading ? 'Retrying…' : 'Retry connection'}</button>
+        </div>}
         <form className="composer" aria-label="Prompt composer" onSubmit={(event) => void sendMessage(event)}>
           <Sparkles className="composer-sparkle" size={18} aria-hidden="true" />
           <textarea
@@ -2352,28 +2654,15 @@ export default function App() {
             <button className="send-button" type="submit" disabled={!message.trim() || !apiReady || running || (!project && (baseModelsLoading || availableBaseModels.length === 0))} aria-label="Send message"><Send size={18} /></button>
           </div>
         </form>
-        {project && <button
-          className="chat-resize-handle"
-          type="button"
-          aria-label="Resize chat window"
-          title="Drag to resize · use arrow keys to adjust"
-          onPointerDown={startComposerResize}
-          onKeyDown={resizeComposerByKeyboard}
-        />}
       </> : <button
         className="chat-launcher"
         type="button"
         aria-label="Open chat"
         title="Open chat"
         onClick={() => {
-          if (suppressChatToggleClick.current) {
-            suppressChatToggleClick.current = false;
-            return;
-          }
-          setComposerPosition(null);
           setChatOpen(true);
         }}
-      ><Sparkles size={25} /></button>}
+      ><Sparkles size={25} /><span className="chat-launcher-label">Chat</span></button>}
     </section>
   );
 
@@ -2427,7 +2716,10 @@ export default function App() {
         onClick={() => { setStudioSection('models'); setCustomizationCategory('body'); if (hasCharacter) setMorphPreviewEnabled(true); }}
       >Open Body morph editor <ChevronRight size={15} /></button>
     </div>}
-    {!project && apiError && <p className="inspector-api-error" role="alert">{apiError}. Restart the local API and try again.</p>}
+    {!project && apiError && <div className="inspector-api-error" role="alert">
+      <span>{apiError}. Check that the local API is running.</span>
+      <button className="initial-data-retry" type="button" disabled={initialDataLoading} onClick={() => setInitialDataRetry((retry) => retry + 1)}>{initialDataLoading ? 'Retrying…' : 'Retry connection'}</button>
+    </div>}
     <div className="properties-note">{project && !hasCharacter
       ? 'This character is a saved browser draft. Blender geometry is created only when you build the editable character.'
       : 'Changes are saved through the Blender project. No placeholder geometry.'}</div>
@@ -2436,6 +2728,52 @@ export default function App() {
   const projectWorkflow = !project ? <div className="workflow-empty">Create a project to view its workflow.</div> : (
     <div className="inspector-workflow">
       <div className="workflow-status"><span className={referencePlan?.status === 'approved' ? 'workflow-status-dot approved' : 'workflow-status-dot'} />{referencePlan?.status === 'approved' ? 'Plan approved' : referencePlan?.status === 'awaiting_review' ? 'Plan awaiting approval' : 'Plan not started'}</div>
+      <section className="workflow-references" aria-label="Reference images">
+        <div className="workflow-references-heading">
+          <strong>Reference images</strong>
+          <span>{project.references?.length ?? 0}</span>
+        </div>
+        <p>Stored with this project; images are not visually analyzed or used to infer character details.</p>
+        {referenceActionError && <p className="workflow-reference-error" role="alert">{referenceActionError}</p>}
+        {uploading && <p className="workflow-reference-progress" role="status">Uploading and validating reference image…</p>}
+        {removingReferenceId && <p className="workflow-reference-progress" role="status">Removing reference image…</p>}
+        {(project.references?.length ?? 0) > 0 && <ul>
+          {(project.references ?? []).map((reference) => (
+            <li key={reference.id}>
+              <span className="workflow-reference-file">
+                <strong title={reference.display_name}>{reference.display_name}</strong>
+                <small>{reference.width} × {reference.height}</small>
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove reference ${reference.display_name}`}
+                title={`Remove ${reference.display_name}`}
+                aria-busy={removingReferenceId === reference.id}
+                disabled={running || uploading || removingReferenceId !== null}
+                onClick={() => void runAction(() => removeReference(reference))}
+              ><X size={14} /></button>
+            </li>
+          ))}
+        </ul>}
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          id="workflow-reference-upload"
+          aria-label="Choose reference image"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) void uploadReference(file);
+            event.currentTarget.value = '';
+          }}
+        />
+        <button
+          className="workflow-reference-add"
+          type="button"
+          disabled={uploading || running || removingReferenceId !== null}
+          onClick={() => document.getElementById('workflow-reference-upload')?.click()}
+        ><Paperclip size={14} />{uploading ? 'Uploading image…' : 'Add reference image'}</button>
+      </section>
       {project.planning_metadata?.summary && <p className="workflow-summary">{project.planning_metadata.summary}</p>}
       {project.planning_metadata?.warnings?.map((warning) => <p className="workflow-warning" key={warning}>{warning}</p>)}
       {project.component_plan?.length > 0 && <div className="planned-components">
@@ -2450,9 +2788,11 @@ export default function App() {
         onClick={() => void runAction(buildEditableCharacter)}
       >{importingCharacter ? `Compiling ${activeModelName}...` : 'Save / compile project in Blender'} {!importingCharacter && <ChevronRight size={16} />}</button>}
       {referencePlan?.status === 'awaiting_review' && !hasCharacter && <p className="workflow-footnote">Approval is required before final save. All edits stay in the browser preview and persisted draft; Blender is not used until you explicitly compile.</p>}
-      {referencePlan?.status === 'approved' && !hasCharacter && <p className="workflow-footnote">{blenderAvailable
-        ? 'Eye, preset, and morph choices are previewed and saved as draft data. Save / compile builds them together in Blender.'
-        : `Blender is unavailable; this draft remains saved. ${blenderError}`}</p>}
+      {!hasCharacter && !blenderAvailable && <p className="workflow-footnote" role="status">
+        Blender is unavailable, so compilation is disabled. Your browser draft and saved choices remain available.
+        {blenderError ? ` ${blenderError}` : ''}
+      </p>}
+      {referencePlan?.status === 'approved' && !hasCharacter && blenderAvailable && <p className="workflow-footnote">Eye, preset, and morph choices are previewed and saved as draft data. Save / compile builds them together in Blender.</p>}
     </div>
   );
 
@@ -2530,6 +2870,25 @@ export default function App() {
     'data-drop-target': draggingLandingCard !== cardId && landingDropTarget === cardId ? 'true' : undefined,
   });
 
+  const showWorkflowInChat = () => {
+    setMessage('Explain the draft, preview, approval, and compile workflow.');
+    setChatOpen(true);
+  };
+
+  if (authLoading) {
+    return <main className="account-gate" role="status"><p>Checking your account…</p></main>;
+  }
+  if (!account) {
+    return <AccountGate
+      initialError={authError}
+      onAuthenticated={acceptAccountSession}
+      onRetry={() => setAuthRetry((retry) => retry + 1)}
+    />;
+  }
+  if (objectWorkshopOpen) {
+    return <Suspense fallback={<div className="preview-status" role="status">Loading Object Workshop…</div>}><ObjectWorkshop onExit={() => setObjectWorkshopOpen(false)} /></Suspense>;
+  }
+
   const renderLandingCardControls = (cardId: LandingCardId) => {
     const index = landingCardOrder.indexOf(cardId);
     const label = landingCardLabels[cardId];
@@ -2557,7 +2916,13 @@ export default function App() {
   };
 
   return (
-    <div className={`app-shell${project ? '' : ' landing-shell'}`}>
+    <div
+      className={`app-shell${project ? ` studio-shell${chatOpen ? ' chat-open' : ' chat-collapsed'}${zoomFitViewport ? ' is-zoom-fit' : ''}` : ' landing-shell'}`}
+      style={project && zoomFitViewport ? {
+        '--landing-visual-width': `${zoomFitViewport.width}px`,
+        '--landing-visual-height': `${zoomFitViewport.height}px`,
+      } as CSSProperties : undefined}
+    >
       {project ? <>
       <aside className="studio-sidebar">
         <nav className="studio-nav" aria-label="Main navigation">
@@ -2569,20 +2934,6 @@ export default function App() {
         </nav>
       </aside>
       <header className="topbar">
-        <div className="studio-brand studio-header-brand" aria-label="C3Canvas">
-          <div className="studio-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 88 88" role="presentation">
-              <rect x="4" y="4" width="80" height="80" rx="23" fill="#17212b" />
-              <text x="43" y="56" fill="#f4f6f7" fontFamily="Arial, Helvetica, sans-serif" fontSize="39" fontWeight="700" letterSpacing="-3" textAnchor="middle">C3</text>
-              <circle cx="67" cy="66" r="5" fill="#74e1c0" />
-            </svg>
-          </div>
-          <span className="studio-brand-divider" aria-hidden="true" />
-          <span className="studio-brand-copy">
-            <strong>C3Canvas</strong>
-            <small>Code · Create · Collaborate</small>
-          </span>
-        </div>
         <div className="topbar-project-actions" aria-label="Project actions">
           <button
             className="project-icon-button"
@@ -2607,7 +2958,10 @@ export default function App() {
             {savedProjectsOpen && <div className="saved-project-list" id="saved-project-list" aria-label="Open saved project">
               <strong>Open project</strong>
               {savedProjectsLoading && <p role="status">Loading saved projects…</p>}
-              {savedProjectsError && <p role="alert">{savedProjectsError}</p>}
+              {savedProjectsError && <div className="saved-project-load-error" role="alert">
+                <span>{savedProjectsError}</span>
+                <button className="initial-data-retry" type="button" disabled={initialDataLoading} onClick={() => setInitialDataRetry((retry) => retry + 1)}>{initialDataLoading ? 'Retrying…' : 'Retry projects'}</button>
+              </div>}
               {otherSavedProjects.length > 0 ? otherSavedProjects.map((item) => {
                 const assetId = item.base_model_asset_id;
                 const modelName = availableBaseModels.find((model) => model.asset_id === assetId)?.name
@@ -2636,14 +2990,44 @@ export default function App() {
           </div>
         </div>
         <div className="top-actions">
-          <button className="topbar-utility" type="button" disabled aria-label="Undo coming soon" title="Undo coming soon"><RotateCcw size={17} /></button>
-          <button className="topbar-utility" type="button" disabled aria-label="Redo coming soon" title="Redo coming soon"><RotateCcw className="redo-icon" size={17} /></button>
+          <button
+            className="topbar-utility"
+            type="button"
+            disabled={!project || morphControlsDisabled || morphHistory.past.length === 0 || running}
+            aria-label="Undo morph edit"
+            title="Undo the latest morph slider, reset, ear preset, or assistant morph edit."
+            onClick={undoMorphEdit}
+          ><RotateCcw size={17} /></button>
+          <button
+            className="topbar-utility"
+            type="button"
+            disabled={!project || morphControlsDisabled || morphHistory.future.length === 0 || running}
+            aria-label="Redo morph edit"
+            title="Redo the latest undone morph edit."
+            onClick={redoMorphEdit}
+          ><RotateCcw className="redo-icon" size={17} /></button>
+          <button
+            type="button"
+            className="topbar-utility account-signout"
+            aria-label={`Sign out ${account.username}`}
+            title={`Sign out ${account.username}`}
+            disabled={running || draftSaveStatus !== 'saved' || morphsDirty || bodyPresetDirty || skinDefinitionDirty || skinDefinitionSaving || appearanceSaving}
+            onClick={() => void runAction(signOut)}
+          ><UserRound size={16} /></button>
           <span className="topbar-divider" />
           <button
             className="export-button"
             type="button"
             disabled={!project || hasCharacter || referencePlan?.status !== 'approved' || !blenderAvailable || running || appearanceSaving || skinDefinitionSaving || skinDefinitionDirty || draftSaveStatus !== 'saved' || morphsDirty}
-            title={hasCharacter ? 'This project has already been compiled.' : 'Compile the saved browser draft in Blender.'}
+            title={hasCharacter
+              ? 'This project has already been compiled.'
+              : !blenderAvailable
+                ? `Blender is unavailable. ${blenderError || 'Compilation is disabled.'}`
+                : referencePlan?.status !== 'approved'
+                  ? 'Approve the plan before compiling.'
+                  : draftSaveStatus !== 'saved' || morphsDirty || skinDefinitionDirty || skinDefinitionSaving
+                    ? 'Wait for draft changes to finish saving before compiling.'
+                    : 'Compile the saved browser draft in Blender.'}
             onClick={() => void runAction(buildEditableCharacter)}
           ><Download size={18} />{importingCharacter ? 'Compiling…' : hasCharacter ? 'Compiled' : 'Save / Compile'}</button>
           <button className="topbar-utility preview-action" type="button" disabled aria-label="Preview is not available yet" title="Preview is not available yet"><Play size={19} fill="currentColor" /></button>
@@ -2652,35 +3036,18 @@ export default function App() {
       <main
         className={`workspace fixed-workspace${characterDockResizing ? ' is-resizing-character-dock' : ''}`}
         ref={workspaceRef}
-        style={{ '--character-dock-width': `${characterDockWidth}px` } as CSSProperties}
+        style={{
+          '--character-dock-width': `${characterDockWidth}px`,
+          '--character-dock-height': `${characterDockHeight}%`,
+        } as CSSProperties}
       >
         <section className={`viewport-area${skinPaintEnabled ? ' is-skin-painting' : ''}`} aria-label="3D workspace">
-          <div className="canvas-wrap" ref={viewportRef}>
-            <PreviewErrorBoundary resetKey={displayPreviewUrl ?? 'no-preview'}>
-            <Canvas shadows dpr={[1, 1.25]} frameloop="demand" gl={{ antialias: true }}>
-              {cameraProjection === 'perspective'
-                ? <PerspectiveCamera key={`camera-${cameraKey}`} makeDefault position={[0.35, 1.1, 5.2]} fov={30} near={0.01} />
-                : <AdaptiveOrthographicCamera key={`camera-${cameraKey}`} />}
-              <ambientLight intensity={fillLightsEnabled ? 0.75 : 0.4} />
-              <hemisphereLight
-                color={lightingPreset === 'cool' ? '#e2deea' : '#ffe4cf'}
-                groundColor="#28252d"
-                intensity={fillLightsEnabled ? 0.95 : 0.35}
-              />
-              <directionalLight
-                position={[4, 7, 5]}
-                color={lightingPreset === 'cool' ? '#ffffff' : '#ffe1c6'}
-                intensity={fillLightsEnabled ? 1.65 : 0.65}
-                castShadow
-                shadow-mapSize={[1024, 1024]}
-              />
-              <directionalLight position={[-4, 3, -4]} intensity={fillLightsEnabled ? 0.65 : 0.2} />
-              <pointLight
-                position={[-3, 2, 4]}
-                intensity={fillLightsEnabled ? 0.8 : 0.2}
-                color={lightingPreset === 'cool' ? '#92b9f4' : '#ffc28a'}
-              />
-              {displayPreviewUrl && <CC3ModelPreview
+          <div
+            className={`canvas-wrap${skinPaintEnabled ? ' is-skin-painting' : ''}${skinPaintEnabled && skinPaintPointerOnModel ? ' is-skin-painting-on-model' : ''}`}
+            ref={viewportRef}
+          >
+            <Suspense fallback={<div className="preview-status" role="status">Loading interactive 3D workspace…</div>}>
+              <CharacterViewportCanvas
                 previewUrl={displayPreviewUrl}
                 eyePreviewUrl={eyePreviewUrl}
                 skinPreview={skinPreview}
@@ -2702,34 +3069,38 @@ export default function App() {
                 skinPaintOpacity={skinPaintOpacity}
                 skinPaintStrokes={skinPaintStrokes}
                 onSkinPaintStrokes={(strokes) => void runAction(() => appendSkinPaintStrokes(strokes))}
-              />}
-              <StudioBackdrop />
-              <ContactShadows position={[0, 0.02, 0]} opacity={0.24} scale={5} blur={2.3} far={3} />
-              <OrbitControls
-                key={`controls-${cameraKey}-${cameraProjection}`}
-                makeDefault
-                enabled={!skinPaintEnabled}
-                enableDamping
-                zoomToCursor
-                enableRotate
-                enablePan
-                enableZoom
-                mouseButtons={{
-                  LEFT: cameraMode === 'orbit' ? MOUSE.ROTATE : cameraMode === 'pan' ? MOUSE.PAN : MOUSE.DOLLY,
-                  MIDDLE: MOUSE.DOLLY,
-                  RIGHT: MOUSE.PAN,
-                }}
-                minDistance={0.12}
-                maxDistance={14}
-                target={[0, 1.35, 0]}
+                onSkinPaintPointerOnModel={setSkinPaintPointerOnModel}
+                cameraKey={cameraKey}
+                cameraMode={cameraMode}
+                cameraProjection={cameraProjection}
+                fillLightsEnabled={fillLightsEnabled}
+                lightingPreset={lightingPreset}
+                onCanvasCreated={notifyCanvasCreated}
+                orbitControlsRef={orbitControlsRef}
+                skinPaintPointerOnModel={skinPaintPointerOnModel}
               />
-            </Canvas>
-            </PreviewErrorBoundary>
+            </Suspense>
+            <div className="workspace-size-controls" role="group" aria-label="Workspace layout">
+              <button
+                type="button"
+                aria-pressed={viewportLayout === 'viewport'}
+                onClick={() => chooseViewportLayout('viewport')}
+              >Viewport</button>
+              <button
+                type="button"
+                aria-pressed={viewportLayout === 'balanced'}
+                onClick={() => chooseViewportLayout('balanced')}
+              >Balanced</button>
+              <button
+                type="button"
+                aria-pressed={viewportLayout === 'editor'}
+                onClick={() => chooseViewportLayout('editor')}
+              >Editor</button>
+            </div>
             {importingCharacter && <div className="preview-importing" role="status" aria-live="polite">
               <span className="preview-loading-spinner" aria-hidden="true" />
               <div><strong>Importing {activeModelName}</strong><span>Blender is preparing the model, materials, and editable morph controls.</span></div>
             </div>}
-            {previewUrl && <PreviewLoadingIndicator title={eyePreviewUrl ? 'Loading eye preview' : morphPreviewUrl ? 'Loading character morph controls' : undefined} />}
             {viewportControlError && <div className="viewport-control-error" role="alert">{viewportControlError}</div>}
             {(morphPreviewMode === 'server' ? serverMorphPreviewStatus : clientMorphPreviewStatus) === 'updating' && <div className="preview-status" role="status">{morphPreviewMode === 'server' ? 'Updating character preview from slider values…' : 'Loading cached morph detail…'}</div>}
             {(morphPreviewMode === 'server' ? serverMorphPreviewStatus : clientMorphPreviewStatus) === 'error' && <div className="preview-status is-error" role="alert">{morphPreviewMode === 'server' ? serverMorphPreviewError : clientMorphPreviewError}</div>}
@@ -2738,13 +3109,13 @@ export default function App() {
             <div className="viewport-mode-controls" role="toolbar" aria-label="Viewport navigation mode">
               <button type="button" className={cameraMode === 'orbit' ? 'active' : ''} aria-label="Orbit" title="Orbit" aria-pressed={cameraMode === 'orbit'} onClick={() => setCameraMode('orbit')}><Crosshair size={19} /><span>Orbit</span></button>
               <span className="viewport-mode-divider" aria-hidden="true" />
-              <button type="button" className={cameraMode === 'pan' ? 'active' : ''} aria-label="Pan" title="Pan" aria-pressed={cameraMode === 'pan'} onClick={() => setCameraMode('pan')}><Hand size={19} /><span>Pan</span></button>
+              <button ref={panModeButtonRef} type="button" className={cameraMode === 'pan' ? 'active' : ''} aria-label="Pan" title="Pan" aria-pressed={cameraMode === 'pan'} onClick={() => setCameraMode('pan')}><Hand size={19} /><span>Pan</span></button>
               <span className="viewport-mode-divider" aria-hidden="true" />
               <button type="button" className={cameraMode === 'zoom' ? 'active' : ''} aria-label="Zoom" title="Zoom" aria-pressed={cameraMode === 'zoom'} onClick={() => setCameraMode('zoom')}><ZoomIn size={19} /><span>Zoom</span></button>
             </div>
             <div className="viewport-bottom">
               <div className="viewport-hint">
-                {cameraMode === 'orbit' ? 'Left-drag to orbit' : cameraMode === 'pan' ? 'Left-drag to pan' : 'Left-drag to zoom'} · Scroll to zoom · Right-drag to pan
+                {cameraMode === 'orbit' ? 'Left-drag or MMB to orbit' : cameraMode === 'pan' ? 'Left-drag to pan' : 'Left-drag to zoom'} · Shift+MMB to pan · Ctrl+MMB or scroll to zoom
               </div>
             </div>
             <div className="viewport-bottom-toolbar" role="toolbar" aria-label="Viewport display controls">
@@ -2817,13 +3188,17 @@ export default function App() {
             className="character-dock-resizer"
             role="separator"
             aria-label="Resize character editor"
-            aria-orientation="vertical"
-            aria-valuemin={520}
-            aria-valuemax={Math.max(520, Math.min(760, (workspaceRef.current?.clientWidth ?? window.innerWidth) - 404))}
-            aria-valuenow={Math.round(characterDockWidth)}
+            aria-orientation={compactWorkspace ? 'horizontal' : 'vertical'}
+            aria-valuemin={compactWorkspace ? 180 : Math.min(420, Math.max(300, (workspaceRef.current?.clientWidth ?? window.innerWidth * 0.848) - 320))}
+            aria-valuemax={compactWorkspace
+              ? Math.max(180, Math.round((workspaceRef.current?.clientHeight ?? window.innerHeight) - 140))
+              : Math.max(300, Math.min(760, (workspaceRef.current?.clientWidth ?? window.innerWidth * 0.848) - 320))}
+            aria-valuenow={compactWorkspace
+              ? Math.round((workspaceRef.current?.clientHeight ?? window.innerHeight) * characterDockHeight / 100)
+              : Math.round(characterDockWidth)}
             tabIndex={0}
             onPointerDown={(event) => {
-              if (window.innerWidth <= 1100 || event.button !== 0) return;
+              if (event.button !== 0) return;
               event.preventDefault();
               event.currentTarget.setPointerCapture(event.pointerId);
               setCharacterDockResizing(true);
@@ -2832,27 +3207,41 @@ export default function App() {
               if (!characterDockResizing || event.buttons !== 1) return;
               const workspaceBounds = workspaceRef.current?.getBoundingClientRect();
               if (!workspaceBounds) return;
-              const maxWidth = Math.max(520, Math.min(760, workspaceBounds.width - 404));
-              setCharacterDockWidth(Math.min(maxWidth, Math.max(520, workspaceBounds.right - event.clientX)));
+              if (compactWorkspace) {
+                const maxHeight = Math.max(180, workspaceBounds.height - 140);
+                const editorHeight = Math.max(180, Math.min(maxHeight, workspaceBounds.bottom - event.clientY));
+                setCharacterDockHeight(editorHeight / workspaceBounds.height * 100);
+              } else {
+                const maxWidth = Math.max(300, Math.min(760, workspaceBounds.width - 320));
+                setCharacterDockWidth(Math.min(maxWidth, Math.max(Math.min(420, maxWidth), workspaceBounds.right - event.clientX)));
+              }
             }}
             onPointerUp={() => setCharacterDockResizing(false)}
             onPointerCancel={() => setCharacterDockResizing(false)}
             onKeyDown={(event) => {
-              if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+              const resizeKeys = compactWorkspace ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+              if (!resizeKeys.includes(event.key)) return;
               event.preventDefault();
-              const workspaceWidth = workspaceRef.current?.clientWidth ?? window.innerWidth;
-              const maxWidth = Math.max(520, Math.min(760, workspaceWidth - 404));
-              const delta = event.key === 'ArrowLeft' ? 24 : -24;
-              setCharacterDockWidth((width) => Math.min(maxWidth, Math.max(520, width + delta)));
+              if (compactWorkspace) {
+                const workspaceHeight = workspaceRef.current?.clientHeight ?? window.innerHeight;
+                const maxHeight = Math.max(180, workspaceHeight - 140);
+                const heightDelta = (event.key === 'ArrowUp' ? 24 : -24) / workspaceHeight * 100;
+                setCharacterDockHeight((height) => Math.min(maxHeight / workspaceHeight * 100, Math.max(180 / workspaceHeight * 100, height + heightDelta)));
+              } else {
+                const workspaceWidth = workspaceRef.current?.clientWidth ?? window.innerWidth;
+                const maxWidth = Math.max(300, Math.min(760, workspaceWidth - 320));
+                const widthDelta = event.key === 'ArrowLeft' ? 24 : -24;
+                setCharacterDockWidth((width) => Math.min(maxWidth, Math.max(Math.min(420, maxWidth), width + widthDelta)));
+              }
             }}
           />
           <nav className="character-dock-tabs" aria-label="Character categories">
-            <button type="button" className={`character-dock-tab${customizationCategory === 'body' ? ' active' : ''}`} aria-label="Morph" title="Morph" aria-pressed={customizationCategory === 'body'} onClick={() => { setCustomizationCategory('body'); setStudioSection('models'); if (hasCharacter) setMorphPreviewEnabled(true); }}><span>Morph</span></button>
-            <button type="button" className={`character-dock-tab${customizationCategory === 'eyes' ? ' active' : ''}`} aria-label="Eyes" title="Eyes" aria-pressed={customizationCategory === 'eyes'} onClick={() => { setCustomizationCategory('eyes'); setStudioSection('models'); }}><span>Eyes</span></button>
-            <button type="button" className={`character-dock-tab${customizationCategory === 'skin' ? ' active' : ''}`} aria-label="Skin" title="Skin" aria-pressed={customizationCategory === 'skin'} onClick={() => { setCustomizationCategory('skin'); setStudioSection('models'); }}><span>Skin</span></button>
-            <button type="button" className={`character-dock-tab${customizationCategory === 'hair' ? ' active' : ''}`} aria-pressed={customizationCategory === 'hair'} onClick={() => { setCustomizationCategory('hair'); setStudioSection('models'); }}><span>Hair</span></button>
-            <button type="button" className={`character-dock-tab${customizationCategory === 'clothing' ? ' active' : ''}`} aria-pressed={customizationCategory === 'clothing'} onClick={() => { setCustomizationCategory('clothing'); setStudioSection('models'); }}><span>Clothing</span></button>
-            <button type="button" className={`character-dock-tab${customizationCategory === 'accessories' ? ' active' : ''}`} aria-label="Extras" title="Extras" aria-pressed={customizationCategory === 'accessories'} onClick={() => { setCustomizationCategory('accessories'); setStudioSection('models'); }}><span>Extras</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'body' && morphMode === 'basic' ? ' active' : ''}`} aria-label="Morph" title="Morph" aria-pressed={customizationCategory === 'body' && morphMode === 'basic'} onClick={() => { setCustomizationCategory('body'); setMorphMode('basic'); setStudioSection('models'); if (hasCharacter) setMorphPreviewEnabled(true); }}><SlidersHorizontal size={19} /><span>Morph</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'eyes' ? ' active' : ''}`} aria-label="Eyes" title="Eyes" aria-pressed={customizationCategory === 'eyes'} onClick={() => { setCustomizationCategory('eyes'); setStudioSection('models'); }}><Eye size={19} /><span>Eyes</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'skin' ? ' active' : ''}`} aria-label="Skin" title="Skin" aria-pressed={customizationCategory === 'skin'} onClick={() => { setCustomizationCategory('skin'); setStudioSection('models'); }}><Circle size={19} /><span>Skin</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'clothing' ? ' active' : ''}`} aria-pressed={customizationCategory === 'clothing'} onClick={() => { setCustomizationCategory('clothing'); setStudioSection('models'); }}><Box size={19} /><span>Clothing</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'accessories' ? ' active' : ''}`} aria-label="Extras" title="Extras" aria-pressed={customizationCategory === 'accessories'} onClick={() => { setCustomizationCategory('accessories'); setStudioSection('models'); }}><Star size={19} /><span>Extras</span></button>
+            <button type="button" className={`character-dock-tab${customizationCategory === 'body' && morphMode === 'advanced' ? ' active' : ''}`} aria-label="Advanced morphs" title="Advanced morphs" aria-pressed={customizationCategory === 'body' && morphMode === 'advanced'} onClick={() => { setCustomizationCategory('body'); setMorphMode('advanced'); setStudioSection('models'); if (hasCharacter) setMorphPreviewEnabled(true); }}><Settings size={19} /><span>Advanced</span></button>
           </nav>
           <div className="character-dock-scroll">
             {studioSection === 'models' && customizationCategory === 'body' ? <>
@@ -2862,9 +3251,17 @@ export default function App() {
                   {controls.length > 0 && <span className={`morph-save-status${morphsDirty || draftSaveStatus === 'error' ? ' is-dirty' : ''}`}>{morphsBaked ? 'Baked' : serverMorphsNeedAssembly ? 'Live preview unavailable' : hasCharacter ? morphsDirty ? 'Unsaved' : 'Saved in Blender' : project ? morphInteractionActive ? 'Editing' : draftSaveStatus === 'saving' ? 'Saving draft…' : draftSaveStatus === 'error' ? 'Draft save failed' : morphsDirty ? 'Unsaved' : 'Draft saved' : 'Preview only'}</span>}
                 </header>
                 {morphControlsLoading && controls.length === 0 && <p className="morph-controls-status" role="status">Loading character controls…</p>}
-                {morphControlsError && <p className="morph-controls-status is-error" role="alert">{morphControlsError}</p>}
+                {morphControlsError && <div className="morph-controls-status is-error" role="alert">
+                  <span>{morphControlsError}</span>
+                  <button
+                    className="initial-data-retry"
+                    type="button"
+                    disabled={morphControlsLoading || running}
+                    onClick={retryMorphControls}
+                  >{morphControlsLoading ? 'Retrying…' : 'Retry character controls'}</button>
+                </div>}
                 {project && !hasCharacter && <div className="morph-server-save">
-                  <small>{activeBodyPresetId !== savedBodyPresetId
+                  <small>{bodyPresetDirty
                     ? 'Preset selection is saved in this draft and compiled to Blender only when you save the project.'
                     : morphInteractionActive
                       ? 'Preview updates live; draft saves when you release the slider.'
@@ -3145,7 +3542,7 @@ export default function App() {
                           </article>;
                         })}
                         {activeBodyArea?.id === 'presets' && bodyPresets.map((preset) => {
-                          const selected = activeBodyPresetId === preset.id;
+                          const selected = activeBodyPresetIds[preset.kind] === preset.id;
                           return <article className={`morph-card${selected ? ' selected' : ''} morph-card--custom-art morph-card--labeled-art`} key={preset.id} data-ai-guide-target={`preset:${preset.id}`}>
                             <button
                               className="morph-card-select"
@@ -3153,7 +3550,7 @@ export default function App() {
                               aria-label={`${selected ? 'Undo' : 'Apply'} ${preset.label}`}
                               aria-pressed={selected}
                               disabled={!project || !isCc5FullMorphAsset || hasCharacter || running || appearanceSaving}
-                              onClick={() => void runAction(() => selectDraftPreset(selected ? null : preset.id))}
+                              onClick={() => void runAction(() => selectDraftPreset(preset.kind, selected ? null : preset.id))}
                             >
                               <span className="morph-card-art has-custom-art"><Sparkles size={48} strokeWidth={1.15} aria-hidden="true" /></span>
                               <strong title={preset.label}>{preset.label}</strong>
@@ -3217,6 +3614,34 @@ export default function App() {
                             && <p className="morph-library-empty">{morphLibraryView === 'favorites' ? 'No favorite morphs in this category yet. Star a control to save it here.' : morphLibraryView === 'recent' ? 'Morphs you adjust will appear here.' : 'No matching morph controls.'}</p>}
                         {morphMode === 'basic' && !isBodyMorphRoot && !isEarMorphRoot && !isHeadMorphRoot && !isFaceMorphRoot && !isEyeMorphRoot && !isOtherMorphRoot && visibleLibraryControls.length > displayedLibraryControls.length && <button className="morph-show-advanced" type="button" onClick={() => setMorphMode('advanced')}>Show all {visibleLibraryControls.length} controls <ChevronRight size={15} /></button>}
                       </div>
+                      {activeBodyArea?.id !== 'presets' && bodyPresets.length > 0 && <section className="active-presets" aria-label="Active character presets">
+                        <header><strong>Active Presets</strong><span>{Number(activeBodyPresetIds.body !== null) + Number(activeBodyPresetIds.head !== null)}</span></header>
+                        <div className="active-preset-list">
+                          {bodyPresets.filter(({ id, kind }) => activeBodyPresetIds[kind] === id).map((preset) => (
+                            <button
+                              className="active-preset-card"
+                              key={preset.id}
+                              type="button"
+                              disabled={!project || hasCharacter || running || appearanceSaving}
+                              aria-label={`Remove ${preset.label}`}
+                              onClick={() => void runAction(() => selectDraftPreset(preset.kind, null))}
+                            ><Sparkles size={16} /><span>{preset.label}</span><X size={12} /></button>
+                          ))}
+                          <button
+                            className="active-preset-add"
+                            type="button"
+                            onClick={() => {
+                              setSelectedBodyArea('presets');
+                              setSelectedBodyMorphGroupId(null);
+                              setSelectedHeadMorphGroupId(null);
+                              setSelectedFaceMorphGroupId(null);
+                              setSelectedEyeMorphGroupId(null);
+                              setSelectedOtherMorphGroupId(null);
+                              setSelectedMorphId(null);
+                            }}
+                          ><Plus size={16} /><span>Add</span></button>
+                        </div>
+                      </section>}
                     </section>
                     <aside className="morph-detail-pane" aria-label="Selected morph details">
                       {isCc5FullMorphAsset && activeBodyArea?.id === 'ears' && <section className="morph-ear-preset" aria-label="Elven ear preset">
@@ -3234,17 +3659,18 @@ export default function App() {
                       </section>}
                       {activeBodyArea?.id === 'presets' ? <>
                         <header className="morph-detail-heading">
-                          <div><Sparkles size={24} aria-hidden="true" /><strong>{activeBodyPresetId
-                            ? bodyPresets.find(({ id }) => id === activeBodyPresetId)?.label ?? 'Character Preset'
-                            : 'Character Presets'}</strong></div>
+                          <div><Sparkles size={24} aria-hidden="true" /><strong>{bodyPresets
+                            .filter(({ id, kind }) => activeBodyPresetIds[kind] === id)
+                            .map(({ label }) => label)
+                            .join(' + ') || 'Character Presets'}</strong></div>
                         </header>
-                        <p className="morph-library-empty">Choose a body or head shape. The browser preview and draft selection save immediately; final compile applies it in Blender.</p>
+                        <p className="morph-library-empty">Choose one body and one head shape. Both preview together and compile in Blender when you save the project.</p>
                         {bodyPresetDirty && <button
                           className="morph-reset-category"
                           type="button"
                           disabled={running || appearanceSaving}
-                          onClick={() => void runAction(() => selectDraftPreset(null))}
-                        ><RotateCcw size={15} /> Undo preset</button>}
+                          onClick={() => void runAction(() => clearDraftPresets())}
+                        ><RotateCcw size={15} /> Clear presets</button>}
                       </> : isBodyMorphRoot ? <>
                         <header className="morph-detail-heading">
                           <div><PersonStanding size={24} aria-hidden="true" /><strong>Browse body morphs</strong></div>
@@ -3330,12 +3756,12 @@ export default function App() {
                             step="0.01"
                             value={morphs[selectedMorph.id] ?? 0}
                             disabled={morphControlsDisabled}
-                            onPointerDown={() => setMorphInteractionActive(true)}
-                            onPointerUp={() => setMorphInteractionActive(false)}
-                            onPointerCancel={() => setMorphInteractionActive(false)}
-                            onKeyDown={() => setMorphInteractionActive(true)}
-                            onKeyUp={() => setMorphInteractionActive(false)}
-                            onBlur={() => setMorphInteractionActive(false)}
+                            onPointerDown={beginMorphInteraction}
+                            onPointerUp={endMorphInteraction}
+                            onPointerCancel={endMorphInteraction}
+                            onKeyDown={beginMorphInteraction}
+                            onKeyUp={endMorphInteraction}
+                            onBlur={endMorphInteraction}
                             onChange={(event) => updateMorph(selectedMorph.id, Number(event.target.value))}
                           />
                           <output htmlFor={morphInputId(selectedMorph.id, 'selected-morph')}>{((morphs[selectedMorph.id] ?? 0) * 100).toFixed(0)}%</output>
@@ -3357,12 +3783,12 @@ export default function App() {
                                 step="0.01"
                                 value={morphs[control.id] ?? 0}
                                 disabled={morphControlsDisabled}
-                                onPointerDown={() => setMorphInteractionActive(true)}
-                                onPointerUp={() => setMorphInteractionActive(false)}
-                                onPointerCancel={() => setMorphInteractionActive(false)}
-                                onKeyDown={() => setMorphInteractionActive(true)}
-                                onKeyUp={() => setMorphInteractionActive(false)}
-                                onBlur={() => setMorphInteractionActive(false)}
+                                onPointerDown={beginMorphInteraction}
+                                onPointerUp={endMorphInteraction}
+                                onPointerCancel={endMorphInteraction}
+                                onKeyDown={beginMorphInteraction}
+                                onKeyUp={endMorphInteraction}
+                                onBlur={endMorphInteraction}
                                 onChange={(event) => updateMorph(control.id, Number(event.target.value))}
                               />
                             </div>
@@ -3395,7 +3821,10 @@ export default function App() {
                   {customizationCategory === 'eyes' ? <>
                     <div className="compatible-assets-heading" data-ai-guide-target="eye-library"><strong>Eye assets</strong><small>{eyeAssets.length} installed</small></div>
                     {eyeAssetsLoading && <p>Loading eye assets…</p>}
-                    {eyeAssetsError && <p role="alert">{eyeAssetsError}</p>}
+                    {eyeAssetsError && <div className="asset-catalog-error" role="alert">
+                      <span>{eyeAssetsError}</span>
+                      <button className="initial-data-retry" type="button" disabled={eyeAssetsLoading || running} onClick={() => setEyeAssetsRetry((retry) => retry + 1)}>Retry eye assets</button>
+                    </div>}
                     {!project && <p className="compatible-assets-note">Create or select a draft project to save eye choices. Selecting an eye loads only its preview geometry in the browser.</p>}
                     {project && !hasCharacter && <p className="compatible-assets-note">Eye selection is a browser-only live preview saved to this draft. Blender loads the chosen eye only when you save / compile.</p>}
                     {project && hasCharacter && <p className="compatible-assets-note">This project is compiled. Create a new draft to preview different eye assets.</p>}
@@ -3426,7 +3855,10 @@ export default function App() {
                   </> : customizationCategory === 'skin' ? <>
                     <div className="compatible-assets-heading" data-ai-guide-target="skin-library"><strong>Skin assets</strong><small>{skinAssets.length} installed</small></div>
                     {skinAssetsLoading && <p role="status">Loading skin assets…</p>}
-                    {skinAssetsError && <p role="alert">{skinAssetsError}</p>}
+                    {skinAssetsError && <div className="asset-catalog-error" role="alert">
+                      <span>{skinAssetsError}</span>
+                      <button className="initial-data-retry" type="button" disabled={skinAssetsLoading || running} onClick={() => setSkinAssetsRetry((retry) => retry + 1)}>Retry skin assets</button>
+                    </div>}
                     {skinPreviewError && <p role="alert">{skinPreviewError}</p>}
                     {!project && <p className="compatible-assets-note">Create a CC3+ draft project to preview and save a skin choice.</p>}
                     {project && !hasCharacter && <p className="compatible-assets-note">Skin maps preview in the browser and are saved with this draft. Blender materials are applied only during Save / Compile.</p>}
@@ -3445,18 +3877,22 @@ export default function App() {
                           type="button"
                           aria-pressed={skinPaintEnabled}
                           disabled={!project || hasCharacter || running || appearanceSaving}
-                          onClick={() => setSkinPaintEnabled((enabled) => !enabled)}
+                          onClick={() => {
+                            setSkinPaintPointerOnModel(false);
+                            setSkinPaintEnabled((enabled) => !enabled);
+                          }}
                         ><Palette size={14} />{skinPaintEnabled ? 'Done painting' : 'Paint mode'}</button>
                       </header>
-                      <p>Enable paint mode, then drag on the character in the viewport. Paint is saved to this draft and compiled with the skin.</p>
+                      <p>Enable paint mode, then drag on the character. Paint across the head, body, arms, or legs. Choose Freckles for scattered marks; pen pressure varies size and opacity.</p>
                       <div className="skin-paint-controls">
                         <div className="skin-paint-tool-switch" role="group" aria-label="Paint tool">
                           <button type="button" className={skinPaintTool === 'paint' ? 'active' : ''} aria-pressed={skinPaintTool === 'paint'} onClick={() => setSkinPaintTool('paint')}>Paint</button>
+                          <button type="button" className={skinPaintTool === 'freckles' ? 'active' : ''} aria-pressed={skinPaintTool === 'freckles'} onClick={() => setSkinPaintTool('freckles')}>Freckles</button>
                           <button type="button" className={skinPaintTool === 'erase' ? 'active' : ''} aria-pressed={skinPaintTool === 'erase'} onClick={() => setSkinPaintTool('erase')}>Erase</button>
                         </div>
                         <label className="skin-paint-color"><span>Color</span><input aria-label="Paint color" type="color" value={skinPaintColor} onChange={(event) => setSkinPaintColor(event.target.value)} /></label>
-                        <label className="skin-paint-range"><span>Brush <output>{skinPaintSize}px</output></span><input aria-label="Brush size" type="range" min="8" max="96" step="1" value={skinPaintSize} onChange={(event) => setSkinPaintSize(Number(event.target.value))} /></label>
-                        <label className="skin-paint-range"><span>Opacity <output>{skinPaintOpacity}%</output></span><input aria-label="Brush opacity" type="range" min="10" max="100" step="1" value={skinPaintOpacity} onChange={(event) => setSkinPaintOpacity(Number(event.target.value))} /></label>
+                        <label className="skin-paint-range"><span>Brush <output>{skinPaintSize}px</output></span><input aria-label="Brush size" type="range" min="1" max="96" step="1" value={skinPaintSize} onChange={(event) => setSkinPaintSize(Number(event.target.value))} /></label>
+                        <label className="skin-paint-range"><span>Opacity <output>{skinPaintOpacity}%</output></span><input aria-label="Brush opacity" type="range" min="1" max="100" step="1" value={skinPaintOpacity} onChange={(event) => setSkinPaintOpacity(Number(event.target.value))} /></label>
                       </div>
                       <div className="skin-paint-actions">
                         <button type="button" disabled={!skinPaintStrokes.length || running || appearanceSaving || hasCharacter} onClick={() => void runAction(() => saveSkinPaintStrokes(skinPaintStrokes.slice(0, -1)))}><RotateCcw size={13} /> Undo stroke</button>
@@ -3471,7 +3907,7 @@ export default function App() {
                           {skinDefinitionSaving ? 'Saving…' : skinDefinitionDirty ? 'Unsaved' : 'Saved'}
                         </span>
                       </header>
-                      <p className="compatible-assets-note">Adjust supported material properties and preview them on the selected skin. Regional effects and texture generation are not available in this slice.</p>
+                      <p className="compatible-assets-note">Tone, undertone, roughness, and repeatable head-map freckles preview on the selected skin. Precise cheek/nose masks and other advanced skin features are not available yet.</p>
                       <div className="semantic-skin-controls">
                         <label className="skin-paint-range">
                           <span>Tone <output>{skinDefinitionDraft.base.tone.toFixed(2)}</output></span>
@@ -3515,6 +3951,103 @@ export default function App() {
                             onChange={(event) => updateSkinDefinition({ surface: { roughness: Number(event.target.value) } })}
                           />
                         </label>
+                      </div>
+                      <div className="semantic-skin-feature">
+                        <div className="semantic-skin-feature-heading">
+                          <strong>Freckles</strong>
+                          <small>Head skin UV map</small>
+                        </div>
+                        <label className="semantic-skin-toggle">
+                          <input
+                            aria-label="Enable freckles"
+                            type="checkbox"
+                            checked={skinDefinitionDraft.features.freckles.enabled}
+                            disabled={hasCharacter || running || skinDefinitionSaving}
+                            onChange={(event) => updateSkinDefinition({
+                              features: { freckles: { enabled: event.target.checked } },
+                            })}
+                          />
+                          <span>Enable procedural freckles</span>
+                        </label>
+                        <p className="compatible-assets-note">The pattern is repeatable and previews on the head texture. Validated cheek/nose masks are not installed, so marks are distributed over the head UV islands rather than placed anatomically.</p>
+                        <div className="semantic-skin-controls">
+                          <label className="skin-paint-range">
+                            <span>Pattern</span>
+                            <select
+                              aria-label="Freckle pattern"
+                              value={skinDefinitionDraft.features.freckles.pattern ?? 'natural'}
+                              disabled={hasCharacter || running || skinDefinitionSaving}
+                              onChange={(event) => updateSkinDefinition({
+                                features: {
+                                  freckles: {
+                                    pattern: event.target.value as typeof skinDefinitionDraft.features.freckles.pattern,
+                                  },
+                                },
+                              })}
+                            >
+                              {FRECKLE_PATTERNS.map((pattern) => (
+                                <option key={pattern.value} value={pattern.value}>{pattern.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="skin-paint-range">
+                            <span>Density <output>{skinDefinitionDraft.features.freckles.density.toFixed(2)}</output></span>
+                            <input
+                              aria-label="Freckle density"
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={skinDefinitionDraft.features.freckles.density}
+                              disabled={hasCharacter || running || skinDefinitionSaving}
+                              onChange={(event) => updateSkinDefinition({
+                                features: { freckles: { density: Number(event.target.value) } },
+                              })}
+                            />
+                          </label>
+                          <label className="skin-paint-range">
+                            <span>Size <output>{skinDefinitionDraft.features.freckles.size.toFixed(2)}</output></span>
+                            <input
+                              aria-label="Freckle size"
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={skinDefinitionDraft.features.freckles.size}
+                              disabled={hasCharacter || running || skinDefinitionSaving}
+                              onChange={(event) => updateSkinDefinition({
+                                features: { freckles: { size: Number(event.target.value) } },
+                              })}
+                            />
+                          </label>
+                          <label className="skin-paint-range">
+                            <span>Strength <output>{skinDefinitionDraft.features.freckles.strength.toFixed(2)}</output></span>
+                            <input
+                              aria-label="Freckle strength"
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={skinDefinitionDraft.features.freckles.strength}
+                              disabled={hasCharacter || running || skinDefinitionSaving}
+                              onChange={(event) => updateSkinDefinition({
+                                features: { freckles: { strength: Number(event.target.value) } },
+                              })}
+                            />
+                          </label>
+                          <label className="skin-paint-color semantic-skin-freckle-color">
+                            <span>Freckle color</span>
+                            <input
+                              aria-label="Freckle color"
+                              type="color"
+                              value={skinDefinitionDraft.features.freckles.color}
+                              disabled={hasCharacter || running || skinDefinitionSaving}
+                              onChange={(event) => updateSkinDefinition({
+                                features: { freckles: { color: event.target.value.toUpperCase() } },
+                              })}
+                            />
+                          </label>
+                        </div>
                       </div>
                       {!hasCharacter && <button
                         className="save-cc3-morphs morph-save-button semantic-skin-save"
@@ -3601,9 +4134,16 @@ export default function App() {
           </div>
         </aside>
       </main>
-      </> : <main className="landing-page" aria-label="C3Canvas home">
+      </> : <main
+        className={`landing-page${zoomFitViewport ? ' is-zoom-fit' : ''}`}
+        aria-label="C3Canvas home"
+        style={zoomFitViewport ? {
+          '--landing-visual-width': `${zoomFitViewport.width}px`,
+          '--landing-visual-height': `${zoomFitViewport.height}px`,
+        } as CSSProperties : undefined}
+      >
         <aside className="landing-sidebar" aria-label="Home navigation">
-          <nav className="landing-sidebar-nav" aria-label="Home">
+          <nav className="landing-sidebar-nav" aria-label="Primary">
             <button
               aria-label="Home"
               title="Home"
@@ -3625,9 +4165,12 @@ export default function App() {
                 document.getElementById('landing-projects')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
             ><FolderOpen size={17} /><span>Projects</span></button>
+            <button type="button" aria-label="Object Workshop" title="Create and edit objects" onClick={() => setObjectWorkshopOpen(true)}><Box size={17} /><span>Objects</span></button>
             <button aria-label="Models, coming soon" title="Models are not available yet" type="button" disabled><Box size={17} /><span>Models</span></button>
             <button aria-label="Tools, coming soon" title="Tools are not available yet" type="button" disabled><Sparkles size={17} /><span>Tools</span></button>
             <button aria-label="Settings, coming soon" title="Settings are not available yet" type="button" disabled><Settings size={17} /><span>Settings</span></button>
+          </nav>
+          <nav className="landing-sidebar-secondary-nav" aria-label="Support">
             <button aria-label="Help" title="Help" type="button" onClick={() => setMessage('How does the draft-first character workflow work?')}><CircleHelp size={17} /><span>Help</span></button>
           </nav>
           <div className="landing-sidebar-note">
@@ -3646,17 +4189,18 @@ export default function App() {
             <div className="landing-topbar-actions">
               <button type="button" className="landing-layout-reset" aria-label="Reset dashboard card positions" title="Reset dashboard card positions" disabled={landingCardOrder.every((id, index) => id === defaultLandingCardOrder[index])} onClick={() => setLandingCardOrder([...defaultLandingCardOrder])}><RotateCcw size={15} /></button>
               <button type="button" aria-label="Settings, coming soon" title="Settings are not available yet" disabled><Settings size={17} /></button>
-              <span className="landing-demo-user" aria-label="Demo workspace"><span>W</span><strong>Workspace</strong><ChevronDown size={13} /></span>
+              <span className="landing-demo-user" aria-label={`Signed in as ${account.username}`}><span>{account.username.slice(0, 1).toUpperCase()}</span><strong>{account.username}</strong></span>
+              <button type="button" className="landing-signout" aria-label={`Sign out ${account.username}`} disabled={running} onClick={() => void runAction(signOut)}><UserRound size={15} /></button>
             </div>
           </header>
           <div className="landing-dashboard-content">
             <section {...getLandingCardProps('hero')} className="landing-hero" id="landing-home" aria-labelledby="landing-title">
               {renderLandingCardControls('hero')}
               <div className="landing-hero-copy">
-                <p className="landing-eyebrow"><span aria-hidden="true" /> AI-ASSISTED CHARACTER STUDIO</p>
-                <h1 id="landing-title">Create. <span>Collaborate. Craft.</span></h1>
+                <p className="landing-eyebrow"><span aria-hidden="true" /> CREATE. COLLABORATE. CRAFT.</p>
+                <h1 id="landing-title">An AI-powered <span>creative workspace.</span></h1>
                 <p className="landing-description">
-                  An AI-assisted 3D creation studio for modeling, rigging, animation, materials, environments, and more — simple when you want it, advanced when you need it.
+                  Start with AI-guided character creation today. Worlds, animation, materials, and more are part of the wider C3Canvas vision.
                 </p>
                 <div className="landing-hero-actions">
                   <button className="landing-start-button" type="button" disabled={!apiReady || running} onClick={openNewProject}>
@@ -3670,17 +4214,27 @@ export default function App() {
               </div>
               <div className="landing-hero-art" aria-hidden="true">
                 <span className="landing-art-glow" />
-                <img src="/c3canvas_logo.png" alt="" />
+                <img src="/c3canvas_mascot.webp" alt="" />
               </div>
             </section>
-            <aside {...getLandingCardProps('assistant')} className="landing-assistant-column" aria-label="Create with AI">
+            <section {...getLandingCardProps('workflow')} className="landing-projects landing-workflow-card" aria-labelledby="landing-workflow-title">
+              {renderLandingCardControls('workflow')}
+              <button className="landing-card-click-target" type="button" aria-label="Ask Canvas about the draft-first workflow" onClick={showWorkflowInChat} />
+              <span className="landing-workflow-symbol" aria-hidden="true"><span /></span>
+              <p className="landing-workflow-kicker">MADE FOR CREATORS</p>
+              <h2 id="landing-workflow-title">Draft first.<br />Compile when ready.</h2>
+              <p>Preview supported character changes in your browser. Your saved choices are compiled together only when you choose.</p>
+              <button type="button" onClick={showWorkflowInChat}>Explore the workflow <ArrowRight size={14} /></button>
+            </section>
+          </div>
+          <div className="landing-home-panels">
+            <aside {...getLandingCardProps('assistant')} className={`landing-assistant-column${chatOpen ? '' : ' is-chat-collapsed'}`} aria-label="Create with AI">
               {renderLandingCardControls('assistant')}
               {chatWidget}
             </aside>
-          </div>
-          <div className="landing-home-panels">
             <section {...getLandingCardProps('new-projects')} className="landing-projects landing-concept-card" aria-labelledby="landing-new-projects-title">
               {renderLandingCardControls('new-projects')}
+              <button className="landing-card-click-target" type="button" aria-label="Start a new character project" disabled={!apiReady || running} onClick={openNewProject} />
               <header className="landing-section-heading">
                 <div><Sparkles size={17} aria-hidden="true" /><h2 id="landing-new-projects-title">New projects</h2></div>
                 <span className="landing-concept-label">Visual demo</span>
@@ -3696,11 +4250,21 @@ export default function App() {
             </section>
             <section {...getLandingCardProps('recent-projects')} className="landing-projects landing-recent-card" id="landing-projects" aria-labelledby="landing-projects-title">
               {renderLandingCardControls('recent-projects')}
+              <button
+                className="landing-card-click-target"
+                type="button"
+                aria-label={savedProjects.length ? 'Open a saved character project' : 'Create a character project'}
+                disabled={!apiReady || running || savedProjectsLoading}
+                onClick={() => savedProjects[0] ? void runAction(() => openProject(savedProjects[0].id)) : openNewProject()}
+              />
               <header className="landing-section-heading">
                 <div><Activity size={17} aria-hidden="true" /><h2 id="landing-projects-title">Recent projects</h2></div>
                 <span>{savedProjectsLoading ? 'Loading…' : `${savedProjects.length} saved`}</span>
               </header>
-              {savedProjectsError && <p className="landing-projects-error" role="alert">{savedProjectsError}</p>}
+              {savedProjectsError && <div className="landing-projects-error" role="alert">
+                <span>{savedProjectsError}</span>
+                <button className="initial-data-retry" type="button" disabled={initialDataLoading} onClick={() => setInitialDataRetry((retry) => retry + 1)}>{initialDataLoading ? 'Retrying…' : 'Retry projects'}</button>
+              </div>}
               {savedProjectsLoading ? <p className="landing-projects-empty" role="status">Loading your saved projects…</p>
                 : savedProjects.length > 0 ? <div className="landing-project-list">
                   {savedProjects.slice(0, showAllLandingProjects ? savedProjects.length : 3).map((item, index) => {
@@ -3723,14 +4287,6 @@ export default function App() {
                   <button type="button" disabled={!apiReady || running} onClick={openNewProject}>Create your first draft <ArrowRight size={14} /></button>
                 </div>}
               {savedProjects.length > 3 && <button className="landing-view-all" type="button" onClick={() => setShowAllLandingProjects((showAll) => !showAll)}>{showAllLandingProjects ? 'Show less' : 'View all'} <ArrowRight size={13} /></button>}
-            </section>
-            <section {...getLandingCardProps('workflow')} className="landing-projects landing-workflow-card" aria-labelledby="landing-workflow-title">
-              {renderLandingCardControls('workflow')}
-              <span className="landing-workflow-symbol" aria-hidden="true"><span /></span>
-              <p className="landing-workflow-kicker">MADE FOR CREATORS</p>
-              <h2 id="landing-workflow-title">Draft first.<br />Compile when ready.</h2>
-              <p>Preview supported character changes in your browser. Your saved choices are compiled together only when you choose.</p>
-              <button type="button" disabled={!apiReady || running} onClick={openNewProject}>Explore the workflow <ArrowRight size={14} /></button>
             </section>
           </div>
         </div>
@@ -3785,7 +4341,10 @@ export default function App() {
                   <span className="available-count">{baseModelsLoading ? 'Loading…' : `${availableBaseModels.length} available`}</span>
                 </div>
                 {baseModelsLoading && <p className="base-model-status" role="status">Loading available character models…</p>}
-                {baseModelsError && <p className="base-model-error" role="alert">{baseModelsError}</p>}
+                {baseModelsError && <div className="base-model-error" role="alert">
+                  <span>{baseModelsError}</span>
+                  <button className="initial-data-retry" type="button" disabled={initialDataLoading} onClick={() => setInitialDataRetry((retry) => retry + 1)}>{initialDataLoading ? 'Retrying…' : 'Retry model catalog'}</button>
+                </div>}
                 {!baseModelsLoading && !baseModelsError && availableBaseModels.length === 0 && <p className="base-model-error" role="alert">No supported character models are currently available.</p>}
                 <div className="base-model-grid" role="group" aria-label="Available character base models">
                   {orderedBaseModels.map((model) => <button
@@ -3846,7 +4405,7 @@ export default function App() {
             <aside className="character-setup-aside" aria-label="Character workflow overview">
               <div className="character-setup-art" aria-hidden="true">
                 <span />
-                <img src="/c3canvas_logo.png" alt="" />
+                <img src="/c3canvas_mascot.webp" alt="" />
               </div>
               <section className="character-setup-benefits" aria-labelledby="character-setup-benefits-title">
                 <h2 id="character-setup-benefits-title"><Sparkles size={15} aria-hidden="true" /> Your character will include</h2>

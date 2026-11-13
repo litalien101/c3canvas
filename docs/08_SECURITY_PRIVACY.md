@@ -15,6 +15,12 @@ The application accepts user text and images, invokes an AI, and runs geometry s
 9. Do not fetch arbitrary URLs from user prompts or model plans. Use an explicit allowlist for external asset providers.
 10. Use CSRF protection as needed for cookie auth, secure cookie flags, CORS allowlist, rate limits, and request size limits.
 
+## Local account implementation
+- The starter provides local username/password accounts, scrypt password hashes, seven-day opaque server-side sessions in HttpOnly/SameSite=Strict cookies, CSRF-token checks on state-changing project and logout requests, and per-project owner checks.
+- Existing ownerless projects are assigned to the first account created after the account migration; additional accounts receive no access to those projects.
+- Account registration is enabled by default for local development. It defaults to disabled when `APP_ENV=production`; set `ALLOW_ACCOUNT_REGISTRATION=true` only while provisioning accounts, then disable it.
+- Remote authentication/project requests are refused unless `APP_ENV=production`. Production use still requires HTTPS, a narrowly configured `ALLOWED_ORIGINS`, controlled registration, rate limiting, backup/recovery, and a security review. The starter does not yet include password reset, email verification, account recovery, or login throttling and is not a hosted multi-tenant service.
+
 ## Worker transaction model
 - Each job is tied to a project, expected scene version, and component scope.
 - Save a temporary copy/checkpoint before destructive operations.
@@ -30,11 +36,15 @@ If importing assets from external sources, capture source URL, asset ID, author,
 
 The supplied CC3 Male source has no accompanying redistribution license. Keep its consolidated GLB available only in the local development asset directory unless and until the owner confirms the required rights. The API and worker must use its fixed asset ID/path and matching SHA-256 manifest; never accept an asset path from a request.
 
+
+Legacy hairstyle assets are not served or loaded by the current API or worker. Keep any retained local source files private and outside version control until a new, rights-reviewed hair workflow is approved.
+
 ## Privacy defaults
+
 - Do not send prompts, reference images, generated meshes, or project files to analytics by default.
 - Clearly disclose which data is sent to each configured AI/image service.
 - Allow local planning without a cloud model; never substitute simulated geometry when Blender is unavailable.
-- Provide project deletion and documented retention policy for hosted deployments.
+- The local MVP retains project data until the owner explicitly deletes it. Deletion immediately removes project state and checkpoints, uploaded references, and the per-project Blender workspace; there is no trash or automatic expiry. Hosted deployments must define backup and retention periods separately.
 - Do not include user content in crash reports without explicit opt-in.
 
 ## Model/provider policy

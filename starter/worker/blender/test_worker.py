@@ -1,3 +1,4 @@
+from array import array
 import importlib.util
 import hashlib
 import json
@@ -44,7 +45,15 @@ def create_job(
     return job_path
 
 
-def run_worker(job_path: Path) -> subprocess.CompletedProcess[str]:
+def run_worker(job_path: Path, *, staged_only: bool = False) -> subprocess.CompletedProcess[str]:
+    arguments = [
+        "--job",
+        str(job_path),
+    ]
+    worker_entry = WORKER_ENTRY
+    if staged_only:
+        worker_entry = WORKER_ENTRY.with_name("worker_entry_staged.py")
+        arguments.append("--staged-only")
     return subprocess.run(
         [
             BLENDER_EXECUTABLE,
@@ -52,16 +61,96 @@ def run_worker(job_path: Path) -> subprocess.CompletedProcess[str]:
             "--factory-startup",
             "--disable-autoexec",
             "--python",
-            str(WORKER_ENTRY),
+            str(worker_entry),
             "--",
-            "--job",
-            str(job_path),
+            *arguments,
         ],
         capture_output=True,
         text=True,
         timeout=600,
         check=False,
     )
+
+
+def test_staged_worker_job_requires_transaction_and_attempt_identity(tmp_path: Path):
+    job_path = create_job(
+        tmp_path,
+        operation="validate_scene_structure",
+        expected_scene_version=0,
+        arguments={},
+    )
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    job["transaction_id"] = str(uuid.uuid4())
+    job["attempt_id"] = str(uuid.uuid4())
+    job["api_contract_version"] = WORKER_MODULE.API_TRANSACTION_CONTRACT_VERSION
+    job["worker_contract_version"] = WORKER_MODULE.WORKER_CONTRACT_VERSION
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+
+    staged_job = WORKER_MODULE.load_job(job_path, staged_only=True)
+    assert staged_job["transaction_id"] == job["transaction_id"]
+    assert staged_job["attempt_id"] == job["attempt_id"]
+    with pytest.raises(ValueError, match="missing or unsupported"):
+        WORKER_MODULE.load_job(job_path)
+
+    for key in ("api_contract_version", "worker_contract_version"):
+        incompatible_job = dict(job)
+        incompatible_job[key] = "unsupported"
+        job_path.write_text(json.dumps(incompatible_job), encoding="utf-8")
+        with pytest.raises(ValueError, match="unsupported transaction worker contract version"):
+            WORKER_MODULE.load_job(job_path, staged_only=True)
+
+
+@pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
+def test_staged_worker_does_not_promote_scene_or_preview(tmp_path: Path):
+    committed_root = tmp_path / "committed"
+    committed_output = committed_root / "output"
+    committed_output.mkdir(parents=True)
+    initial_job = create_job(
+        committed_root,
+        operation="validate_scene_structure",
+        expected_scene_version=0,
+        arguments={},
+    )
+    initial = run_worker(initial_job)
+    assert initial.returncode == 0, initial.stderr
+    committed_scene = committed_output / "scene.blend"
+    committed_preview = committed_output / "preview.glb"
+    assert committed_scene.is_file()
+    assert committed_preview.is_file()
+    committed_scene_hash = sha256_file(committed_scene)
+    committed_preview_hash = sha256_file(committed_preview)
+
+    staging_root = tmp_path / "transactions" / str(uuid.uuid4()) / str(uuid.uuid4())
+    staging_output = staging_root / "output"
+    staging_output.mkdir(parents=True)
+    shutil.copy2(committed_scene, staging_output / "scene.blend")
+    shutil.copy2(committed_preview, staging_output / "preview.glb")
+    staged_job = create_job(
+        staging_root,
+        operation="validate_scene_structure",
+        expected_scene_version=0,
+        arguments={},
+    )
+    job = json.loads(staged_job.read_text(encoding="utf-8"))
+    job["transaction_id"] = str(uuid.uuid4())
+    job["attempt_id"] = str(uuid.uuid4())
+    job["api_contract_version"] = WORKER_MODULE.API_TRANSACTION_CONTRACT_VERSION
+    job["worker_contract_version"] = WORKER_MODULE.WORKER_CONTRACT_VERSION
+    staged_job.write_text(json.dumps(job), encoding="utf-8")
+
+    staged = run_worker(staged_job, staged_only=True)
+    assert staged.returncode == 0, staged.stderr
+    report = json.loads((staging_output / "result.json").read_text(encoding="utf-8"))
+    assert report["transaction_id"] == job["transaction_id"]
+    assert report["attempt_id"] == job["attempt_id"]
+    assert report["api_contract_version"] == WORKER_MODULE.API_TRANSACTION_CONTRACT_VERSION
+    assert report["worker_contract_version"] == WORKER_MODULE.WORKER_CONTRACT_VERSION
+    assert report["scene_file"] == "output/scene_candidate.blend"
+    assert report["preview_file"] == "output/preview_candidate.glb"
+    assert (staging_output / "scene_candidate.blend").is_file()
+    assert (staging_output / "preview_candidate.glb").is_file()
+    assert sha256_file(committed_scene) == committed_scene_hash
+    assert sha256_file(committed_preview) == committed_preview_hash
 
 
 def read_glb_json(glb_path: Path) -> dict:
@@ -131,6 +220,38 @@ def test_worker_job_schema_accepts_only_cc3_operations(tmp_path):
     assert WORKER_MODULE.load_job(valid_import_with_morphs)["arguments"]["morphs"] == initial_morphs
     if "character_cc5_rlcc3plus_all_morphs_v1" in WORKER_MODULE.CC3_ASSET:
         cc5_asset_id = "character_cc5_rlcc3plus_all_morphs_v1"
+        valid_import_with_presets = create_job(
+            tmp_path,
+            operation="import_base_model",
+            expected_scene_version=0,
+            arguments={
+                "component_id": str(uuid.uuid4()),
+                "asset_id": cc5_asset_id,
+                "preset_ids": {
+                    "body": "female_neutral_body_preset_4",
+                    "head": "female_neutral_head_preset_9",
+                },
+            },
+        )
+        assert WORKER_MODULE.load_job(valid_import_with_presets)["arguments"]["preset_ids"] == {
+            "body": "female_neutral_body_preset_4",
+            "head": "female_neutral_head_preset_9",
+        }
+        invalid_import_preset_kinds = create_job(
+            tmp_path,
+            operation="import_base_model",
+            expected_scene_version=0,
+            arguments={
+                "component_id": str(uuid.uuid4()),
+                "asset_id": cc5_asset_id,
+                "preset_ids": {
+                    "body": "female_neutral_head_preset_9",
+                    "head": None,
+                },
+            },
+        )
+        with pytest.raises(ValueError, match="body preset"):
+            WORKER_MODULE.load_job(invalid_import_preset_kinds)
         cc5_morphs = {
             control_id: 0.0
             for control_id in WORKER_MODULE.CC3_MORPH_CONTROLS_BY_ASSET[cc5_asset_id]
@@ -187,7 +308,7 @@ def test_worker_job_schema_accepts_only_cc3_operations(tmp_path):
         },
         scope_component_ids=[str(uuid.uuid4())],
     )
-    with pytest.raises(ValueError, match="scope only their body component"):
+    with pytest.raises(ValueError, match="scope only their character component"):
         WORKER_MODULE.load_job(valid_bake)
     bake_component_id = str(uuid.uuid4())
     valid_bake = create_job(
@@ -278,6 +399,31 @@ def test_worker_job_schema_accepts_only_cc3_operations(tmp_path):
         WORKER_MODULE.load_job(linked_job)
 
 
+def test_retired_hair_worker_operations_and_import_fields_are_rejected(tmp_path):
+    for operation in ("generate_cc5_hair", "attach_pinned_hair_asset"):
+        job_path = create_job(
+            tmp_path,
+            operation=operation,
+            expected_scene_version=1,
+            arguments={},
+        )
+        with pytest.raises(ValueError, match="Operation is not allowlisted"):
+            WORKER_MODULE.load_job(job_path)
+
+    job_path = create_job(
+        tmp_path,
+        operation="import_base_model",
+        expected_scene_version=0,
+        arguments={
+            "component_id": str(uuid.uuid4()),
+            "asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
+            "hair_attachment": {"asset_id": "legacy", "component_id": "legacy-hair"},
+        },
+    )
+    with pytest.raises(ValueError, match="unsupported fields"):
+        WORKER_MODULE.load_job(job_path)
+
+
 def test_worker_validates_semantic_skin_definition(tmp_path):
     skin_asset_id = next(iter(WORKER_MODULE.SKIN_ASSETS))
     arguments = {
@@ -285,9 +431,17 @@ def test_worker_validates_semantic_skin_definition(tmp_path):
         "asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
         "skin_asset_id": skin_asset_id,
         "skin_definition": {
-            "version": 1,
+            "version": 2,
             "base": {"tone": 0.62, "undertone": "neutral"},
             "surface": {"roughness": 0.42},
+            "features": {"freckles": {
+                "enabled": False,
+                "density": 0.18,
+                "size": 0.45,
+                "strength": 0.35,
+                "color": "#80513F",
+                "seed": 24301,
+            }},
         },
     }
     valid = create_job(
@@ -328,9 +482,17 @@ def test_worker_applies_skin_semantics_without_losing_source_roughness():
         diffuse_color=(1.0, 1.0, 1.0, 1.0),
     )
     definition = {
-        "version": 1,
+        "version": 2,
         "base": {"tone": 1.0, "undertone": "warm"},
         "surface": {"roughness": 0.21},
+        "features": {"freckles": {
+            "enabled": False,
+            "density": 0.18,
+            "size": 0.45,
+            "strength": 0.35,
+            "color": "#80513F",
+            "seed": 24301,
+        }},
     }
 
     result = WORKER_MODULE.apply_skin_definition(
@@ -343,6 +505,85 @@ def test_worker_applies_skin_semantics_without_losing_source_roughness():
     assert base_color.default_value[:3] == pytest.approx((0.624, 0.48, 0.3456))
 
 
+def test_worker_generates_seeded_freckle_layout():
+    settings = {
+        "enabled": True,
+        "density": 0.1,
+        "size": 0.45,
+        "strength": 0.35,
+        "color": "#80513F",
+        "seed": 24301,
+    }
+
+    spots = WORKER_MODULE.generate_skin_freckle_spots(settings, 128, 64)
+
+    assert len(spots) == 80
+    assert spots == WORKER_MODULE.generate_skin_freckle_spots(settings, 128, 64)
+    assert spots[0] == pytest.approx((56.19259175658226, 16.706750452518463, 0.08027152073171737, 0.13194720307271926))
+    assert all(0 <= x < 128 and 0 <= y < 64 and radius > 0 and opacity > 0
+               for x, y, radius, opacity in spots)
+    assert WORKER_MODULE.generate_skin_freckle_spots(
+        {**settings, "enabled": False},
+        128,
+        64,
+    ) == []
+
+
+def test_worker_bakes_freckles_into_a_copy_of_the_head_diffuse_map():
+    class FakePixels:
+        def __init__(self, values):
+            self.values = values
+
+        def foreach_get(self, target):
+            target[:] = array("f", self.values)
+
+        def foreach_set(self, values):
+            self.values = list(values)
+
+    class FakeImage:
+        def __init__(self, values):
+            self.size = (256, 256)
+            self.pixels = FakePixels(values)
+            self.name = "HeadDiffuse"
+
+        def copy(self):
+            return FakeImage(self.pixels.values.copy())
+
+        def update(self):
+            pass
+
+        def pack(self):
+            pass
+
+    original_image = FakeImage([0.5, 0.4, 0.3, 1.0] * (256 * 256))
+    image_node = SimpleNamespace(type="TEX_IMAGE", image=original_image)
+    color_input = SimpleNamespace(links=[SimpleNamespace(from_node=image_node)])
+    shader = SimpleNamespace(type="BSDF_PRINCIPLED", inputs={"Base Color": color_input})
+    material = SimpleNamespace(
+        name="Std_Skin_Head_CC3PlusFemaleSkin",
+        use_nodes=True,
+        node_tree=SimpleNamespace(nodes=[shader, image_node]),
+    )
+    bpy = SimpleNamespace(data=SimpleNamespace(
+        materials=SimpleNamespace(get=lambda name: material if name == material.name else None),
+    ))
+    settings = {
+        "enabled": True,
+        "density": 0.1,
+        "size": 0.45,
+        "strength": 0.35,
+        "color": "#80513F",
+        "seed": 24301,
+    }
+
+    count = WORKER_MODULE.apply_skin_freckles(bpy, settings)
+
+    assert count == 80
+    assert image_node.image is not original_image
+    assert original_image.pixels.values[0:3] == [0.5, 0.4, 0.3]
+    assert image_node.image.pixels.values != original_image.pixels.values
+
+
 def test_skin_paint_worker_validation_is_bounded_and_region_scoped():
     stroke = {
         "material": "Std_Skin_Head",
@@ -353,6 +594,19 @@ def test_skin_paint_worker_validation_is_bounded_and_region_scoped():
         "points": [{"u": 0.25, "v": 0.4}, {"u": 0.3, "v": 0.45}],
     }
     assert WORKER_MODULE.validate_skin_paint_strokes([stroke], "skin_cc3plus_female_1") == [stroke]
+    freckles_stroke = {**stroke, "material": "Std_Skin_Body", "tool": "freckles"}
+    assert WORKER_MODULE.validate_skin_paint_strokes(
+        [freckles_stroke],
+        "skin_cc3plus_female_1",
+    ) == [freckles_stroke]
+    pressure_stroke = {
+        **stroke,
+        "points": [{"u": 0.25, "v": 0.4, "pressure": 0.2}],
+    }
+    assert WORKER_MODULE.validate_skin_paint_strokes(
+        [pressure_stroke],
+        "skin_cc3plus_female_1",
+    ) == [pressure_stroke]
     erase_stroke = {**stroke, "tool": "erase"}
     assert WORKER_MODULE.validate_skin_paint_strokes(
         [erase_stroke],
@@ -370,6 +624,34 @@ def test_skin_paint_worker_validation_is_bounded_and_region_scoped():
             [{**stroke, "points": [{"u": 1.1, "v": 0.5}]}],
             "skin_cc3plus_female_1",
         )
+    with pytest.raises(ValueError, match="pressure must be a finite value"):
+        WORKER_MODULE.validate_skin_paint_strokes(
+            [{**stroke, "points": [{"u": 0.25, "v": 0.4, "pressure": 2}]}],
+            "skin_cc3plus_female_1",
+        )
+
+
+def test_worker_applies_stylus_pressure_to_paint_size_and_opacity():
+    legacy_samples = WORKER_MODULE.skin_paint_samples(
+        [{"u": 0.5, "v": 0.5}],
+        32,
+        32,
+        1.0,
+    )
+    assert legacy_samples == [(15.5, 15.5, 1.0, 1)]
+
+    points = [
+        {"u": 1 / 31, "v": 0.5, "pressure": 0.05},
+        {"u": 30 / 31, "v": 0.5, "pressure": 1.0},
+    ]
+
+    samples = WORKER_MODULE.skin_paint_samples(points, 32, 32, 1.0)
+
+    assert samples[0] == pytest.approx((1, 15.5, 0.5, 0.05))
+    assert samples[-1] == pytest.approx((30, 15.5, 1.0, 1.0))
+    assert len(samples) > 2
+    assert 0.05 < samples[len(samples) // 2][3] < 1
+    assert 1.0 * samples[0][3] < 1.0 * samples[-1][3]
 
 
 def test_base_compile_imports_selected_quality_eye_geometry(tmp_path):
@@ -455,6 +737,82 @@ def test_cc5_manifest_covers_all_directional_controls_and_meshes():
         control["positive_shape_key"] and control["negative_shape_key"]
         for control in manifest["controls"]
     )
+
+
+@pytest.mark.skipif(
+    "character_cc5_rlcc3plus_all_morphs_v1" not in WORKER_MODULE.CC3_ASSET,
+    reason="The owner-supplied CC5/CC3+ blend and preview are not installed",
+)
+@pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
+def test_blender_worker_imports_cc5_with_body_and_head_presets(tmp_path):
+    asset_id = "character_cc5_rlcc3plus_all_morphs_v1"
+    manifest = WORKER_MODULE.CC3_MORPH_MANIFESTS[asset_id]
+    component_id = str(uuid.uuid4())
+    preset_ids = {
+        "body": "female_neutral_body_preset_4",
+        "head": "female_neutral_head_preset_9",
+    }
+    job = create_job(
+        tmp_path,
+        operation="import_base_model",
+        expected_scene_version=0,
+        arguments={
+            "component_id": component_id,
+            "asset_id": asset_id,
+            "preset_ids": preset_ids,
+        },
+    )
+
+    completed = run_worker(job)
+
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads((tmp_path / "output" / "result.json").read_text(encoding="utf-8"))["result"]
+    assert result["body_preset"]["preset_ids"] == preset_ids
+    assert result["body_preset"]["preset_mesh_name"] == "CC_Base_Body"
+    assert set(result["body_preset"]["preset_following_mesh_names"]) == (
+        set(manifest["mesh_names"]) - {"CC_Base_Body"}
+    )
+    assert result["body_preset"]["shape_key_count"] == manifest["body_shape_key_count"] + 1
+    assert result["component_shape_key_count"] == (
+        manifest["component_shape_key_count"]
+        + manifest["mesh_count"] * len(preset_ids)
+    )
+    preset_inspection = (
+        "import bpy,json;"
+        f"component_id={json.dumps(component_id)};"
+        "body=next(obj for obj in bpy.context.scene.objects "
+        "if obj.type=='MESH' and obj.get('comodel_component_id')==component_id "
+        "and obj.get('comodel_source_group')=='CC_Base_Body');"
+        "result={'preset_ids':json.loads(body['comodel_cc5_preset_ids']),"
+        "'shape_keys':sorted(key.name for key in body.data.shape_keys.key_blocks "
+        "if key.name.startswith('CoModel_Preset_'))};"
+        "print('CC5_COMPILED_PRESETS='+json.dumps(result,sort_keys=True))"
+    )
+    inspected = subprocess.run(
+        [
+            BLENDER_EXECUTABLE,
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            str(tmp_path / "output" / "scene.blend"),
+            "--python-expr",
+            preset_inspection,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert inspected.returncode == 0, inspected.stderr
+    compiled_presets = next(
+        json.loads(line.split("=", 1)[1])
+        for line in inspected.stdout.splitlines()
+        if line.startswith("CC5_COMPILED_PRESETS=")
+    )
+    assert compiled_presets["preset_ids"] == preset_ids
+    assert set(compiled_presets["shape_keys"]) == {
+        f"CoModel_Preset_{preset_id}" for preset_id in preset_ids.values()
+    }
 
 
 @pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
@@ -745,12 +1103,13 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         "active_key_count": 0,
         "nonzero_control_count": 0,
     }
-
     preview_path = tmp_path / "output" / "preview.glb"
     neutral_preview = preview_path.read_bytes()
     neutral_gltf = read_glb_json(preview_path)
-    assert len(neutral_gltf["meshes"]) == manifest["mesh_count"]
-    assert len(neutral_gltf["skins"]) == 1
+    expected_preview_mesh_count = manifest["mesh_count"]
+    expected_preview_skin_count = 1
+    assert len(neutral_gltf["meshes"]) == expected_preview_mesh_count
+    assert len(neutral_gltf["skins"]) == expected_preview_skin_count
     assert all(not mesh.get("extras", {}).get("targetNames") for mesh in neutral_gltf["meshes"])
     body_node = next(
         node for node in neutral_gltf["nodes"]
@@ -790,6 +1149,7 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         expected_scene_version=1,
         arguments={"component_id": component_id, "asset_id": asset_id, "morphs": values},
         scope_component_ids=[component_id],
+        dependency_component_ids=[],
     )
     previewed = run_worker(preview_job)
     assert previewed.returncode == 0, previewed.stderr
@@ -806,6 +1166,7 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         expected_scene_version=1,
         arguments={"component_id": component_id, "asset_id": asset_id, "morphs": values},
         scope_component_ids=[component_id],
+        dependency_component_ids=[],
     )
     saved = run_worker(save_job)
     assert saved.returncode == 0, saved.stderr
@@ -815,9 +1176,12 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
     assert save_report["result"]["component_shape_key_count"] == manifest["component_shape_key_count"] - manifest["mesh_count"]
     assert preview_path.read_bytes() != neutral_preview
     saved_gltf = read_glb_json(preview_path)
-    assert len(saved_gltf["meshes"]) == manifest["mesh_count"]
-    assert len(saved_gltf["skins"]) == len(neutral_gltf["skins"])
-    assert all(not mesh.get("extras", {}).get("targetNames") for mesh in saved_gltf["meshes"])
+    assert len(saved_gltf["meshes"]) == expected_preview_mesh_count
+    assert len(saved_gltf["skins"]) == expected_preview_skin_count
+    assert all(
+        not mesh.get("extras", {}).get("targetNames")
+        for mesh in saved_gltf["meshes"]
+    )
 
     preset_job = create_job(
         tmp_path,
@@ -827,28 +1191,36 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
             "component_id": component_id,
             "asset_id": asset_id,
             "morphs": values,
-            "preset_id": "female_neutral_head_preset_9",
+            "preset_ids": {
+                "body": "female_neutral_body_preset_4",
+                "head": "female_neutral_head_preset_9",
+            },
         },
         scope_component_ids=[component_id],
+        dependency_component_ids=[],
     )
     preset_applied = run_worker(preset_job)
     assert preset_applied.returncode == 0, preset_applied.stderr
     preset_report = json.loads((tmp_path / "output" / "result.json").read_text(encoding="utf-8"))
     assert preset_report["scene_version"] == 3
-    assert preset_report["result"]["preset_id"] == "female_neutral_head_preset_9"
+    assert preset_report["result"]["preset_ids"] == {
+        "body": "female_neutral_body_preset_4",
+        "head": "female_neutral_head_preset_9",
+    }
     assert preset_report["result"]["preset_mesh_name"] == "CC_Base_Body"
     assert set(preset_report["result"]["preset_following_mesh_names"]) == (
         set(manifest["mesh_names"]) - {"CC_Base_Body"}
     )
-    assert preset_report["result"]["shape_key_count"] == manifest["body_shape_key_count"]
+    assert preset_report["result"]["shape_key_count"] == manifest["body_shape_key_count"] + 1
     assert preset_report["result"]["component_shape_key_count"] == (
-        manifest["component_shape_key_count"] - manifest["mesh_count"] + manifest["mesh_count"]
+        manifest["component_shape_key_count"] - manifest["mesh_count"] + 2 * manifest["mesh_count"]
     )
     preset_inspection = (
         "import bpy,json;"
         f"component_id={json.dumps(component_id)};"
-        "key_name='CoModel_Preset_female_neutral_head_preset_9';"
-        "result={obj.get('comodel_source_group'):{"
+        "key_names=['CoModel_Preset_female_neutral_body_preset_4',"
+        "'CoModel_Preset_female_neutral_head_preset_9'];"
+        "result={key_name:{obj.get('comodel_source_group'):{"
         "'value':obj.data.shape_keys.key_blocks[key_name].value,"
         "'moved_vertices':sum((obj.data.shape_keys.key_blocks[key_name].data[i].co-"
         "obj.data.shape_keys.key_blocks[0].data[i].co).length>1e-6 "
@@ -857,7 +1229,7 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         "if obj.type=='MESH' and obj.get('comodel_component_id')==component_id "
         "and obj.get('comodel_source_group')!='CC_Base_Body' "
         "and obj.data.shape_keys is not None "
-        "and key_name in obj.data.shape_keys.key_blocks};"
+        "and key_name in obj.data.shape_keys.key_blocks} for key_name in key_names};"
         "print('CC5_PRESET_FOLLOWERS='+json.dumps(result,sort_keys=True))"
     )
     inspected_preset = subprocess.run(
@@ -881,10 +1253,16 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         for line in inspected_preset.stdout.splitlines()
         if line.startswith("CC5_PRESET_FOLLOWERS=")
     )
-    assert set(preset_followers) == set(manifest["mesh_names"]) - {"CC_Base_Body"}
+    expected_followers = set(manifest["mesh_names"]) - {"CC_Base_Body"}
+    assert set(preset_followers) == {
+        "CoModel_Preset_female_neutral_body_preset_4",
+        "CoModel_Preset_female_neutral_head_preset_9",
+    }
+    assert all(set(followers) == expected_followers for followers in preset_followers.values())
     assert all(
         follower["value"] == 1.0 and follower["moved_vertices"] > 0
-        for follower in preset_followers.values()
+        for followers in preset_followers.values()
+        for follower in followers.values()
     )
 
     undo_preset_job = create_job(
@@ -895,15 +1273,16 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
             "component_id": component_id,
             "asset_id": asset_id,
             "morphs": values,
-            "preset_id": None,
+            "preset_ids": {"body": None, "head": None},
         },
         scope_component_ids=[component_id],
+        dependency_component_ids=[],
     )
     preset_undone = run_worker(undo_preset_job)
     assert preset_undone.returncode == 0, preset_undone.stderr
     undo_report = json.loads((tmp_path / "output" / "result.json").read_text(encoding="utf-8"))
     assert undo_report["scene_version"] == 4
-    assert undo_report["result"]["preset_id"] is None
+    assert undo_report["result"]["preset_ids"] == {"body": None, "head": None}
     assert undo_report["result"]["shape_key_count"] == manifest["body_shape_key_count"] - 1
     assert undo_report["result"]["component_shape_key_count"] == (
         manifest["component_shape_key_count"] - manifest["mesh_count"]
@@ -946,6 +1325,7 @@ def test_blender_worker_applies_and_bakes_cc5_controls_across_all_meshes(tmp_pat
         expected_scene_version=4,
         arguments={"component_id": component_id, "asset_id": asset_id, "morphs": values},
         scope_component_ids=[component_id],
+        dependency_component_ids=[],
     )
     baked = run_worker(bake_job)
     assert baked.returncode == 0, baked.stderr

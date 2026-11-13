@@ -39,7 +39,8 @@ A later remote-desktop or full native Blender mode may be added, but it should n
 - Vite dev server.
 - FastAPI local server.
 - Blender executable installed locally; worker launches it in background mode.
-- SQLite database and project files under a configurable data directory.
+- SQLite database, local username/password accounts, owner-scoped projects, and project files under a configurable data directory.
+- Account and project routes accept loopback peers only unless `APP_ENV=production` is explicitly set.
 - Draft and planning APIs work without Blender; real modeling operations require the configured Blender worker. Do not select mock modeling as a fallback.
 
 ### Mode B: single-user self-hosted
@@ -50,7 +51,7 @@ A later remote-desktop or full native Blender mode may be added, but it should n
 
 ### Mode C: hosted multi-user service (later)
 - Separate web/API, job queue, worker pool, PostgreSQL, and object store.
-- Per-user/project authorization and quotas.
+- Hosted identity provider or hardened account lifecycle, per-user/project authorization, and quotas. The local SQLite account implementation is not production-ready identity management.
 - Worker jobs isolated per project or container to avoid cross-project leakage.
 - GPU use optional; most procedural Blender operations do not require a GPU, while some generation/render/AI services may.
 
@@ -80,11 +81,13 @@ The worker should run Blender in a separate process. A safe operation lifecycle:
 For MVP, use **operation-level progressive previews** rather than trying to stream every vertex mutation. Each meaningful operation can emit progress and refresh a GLB snapshot. The UI swaps the preview when the new asset has loaded. This produces a live, piece-by-piece feeling without building a custom geometry delta protocol.
 
 ### Draft-first browser workspace and explicit Blender compile
-**Invariant:** draft editing is browser preview plus persisted project data. The browser does not import editable geometry into Blender while the user is choosing eyes, presets, or morphs. An explicit final **Save / Compile** or export starts the initial compilation of the pinned base asset and all saved draft choices together. Afterward, only explicit, supported scene operations may start Blender. Approval is an independent gate and never starts Blender. Standalone eye attachment is forbidden.
+**Invariant:** draft editing is browser preview plus persisted project data. The browser does not import editable geometry into Blender while the user is choosing eyes, presets, morphs, or skin. An explicit final **Save / Compile** or export starts the initial compilation of the pinned base asset and all saved draft choices together. Afterward, only explicit, supported scene operations may start Blender. Approval is an independent gate and never starts Blender. Standalone eye attachment is forbidden.
 
-Project creation, deterministic plan generation, plan approval, morph persistence, and appearance persistence are API/SQLite operations and do not require Blender. The browser edits a full manifest-validated morph map and saves it with an optimistic `draft_revision`; eye and preset choices are stored in `draft_appearance`. These values are project data, not Blender scene geometry. The compile operation validates and passes the selected pinned asset, complete saved morph map, preset, and eye attachment together so the worker writes the first committed scene and preview only after the explicit user action.
+Project creation, deterministic plan generation, plan approval, morph persistence, and appearance persistence are API/SQLite operations and do not require Blender. The browser edits a full manifest-validated morph map and saves it with an optimistic `draft_revision`; eye, preset, and compatible skin choices are stored in `draft_appearance`. These values are project data, not Blender scene geometry. The compile operation validates and passes the selected pinned asset, complete saved morph map, preset, eye, and selected skin together so the worker writes the first committed scene and preview only after the explicit user action. Hair generation and hairstyle preview/attachment are not currently supported. The current API and worker expose no hair routes or operations.
 
 The initial browser screen is a welcome page with explicit create/open project actions; no character preview is mounted and no saved project is automatically opened. The model catalog may be fetched for availability and labels, but character preview geometry and manifest morph controls load only after a project is explicitly created or opened. The model catalog returns source hashes without transferring the full morph library. CC3 morph edits use browser-local morph targets. Eye selection loads only its integrity-pinned eye-only GLB as a browser overlay and hides only the base preview's default eye meshes. For CC5/CC3+, an optional local build provides a native-topology, high-detail GLB proxy plus lazily fetched sparse signed control deltas; the browser combines active deltas from an immutable base geometry. Proxy hashes and source identity are verified. If the proxy is unavailable, CC5/CC3+ draft sliders remain disabled rather than invoking Blender for a preview. Project viewport previews omit morph targets when supported. Previously saved morph-heavy previews are refreshed from the Blender scene when first requested. If the installed Blender exporter cannot omit morph targets, the API records that capability fallback to avoid repeated exports.
+
+Skin painting raycasts pointer events onto the selected browser character, records the hit material and UV coordinate, and composes bounded strokes on a browser-only derived texture. Stylus pressure is stored per point; UV discontinuities create separate strokes to avoid connecting unrelated islands. The API persists stroke data with draft appearance without invoking Blender, and the worker replays it onto copies of the pinned diffuse maps only during explicit compile. The MVP has one custom paint stroke collection; semantic paint layers, alpha/scatter brushes, redo, and synchronized 2D UV editing remain future work.
 
 Later optimization options: websocket metadata, binary geometry deltas, partial component GLBs, and lower-resolution preview exports while a high-resolution operation continues.
 

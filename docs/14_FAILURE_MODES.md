@@ -14,6 +14,7 @@
 | Reference image unclear | Store uncertainty and use reversible defaults | Ask for another angle or user guidance when consequential |
 | Provider outage/rate limit | Backoff with bounded retries; job remains visible | Resume/retry without duplicate operations using idempotency keys |
 | Asset storage failure | Do not advance state if required artifact can't be committed | Retry storage or restore transaction |
+| Project file cleanup fails during deletion | Return `PROJECT_CLEANUP_FAILED`, keep the project record, and reject unsafe symlink paths | Correct the local filesystem issue and retry deletion |
 | User uploads huge/malformed image | Reject safely with user-facing limits | Ask for supported file/size |
 | Export quality checks fail | Export report shows fail/warn; gate critical target profile exports | Fix listed issues or explicitly export with warnings where policy allows |
 

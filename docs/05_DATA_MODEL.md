@@ -4,19 +4,30 @@ The database schema may evolve, but these semantics must remain stable.
 
 ## Core records
 
+### Account
+- `id`: stable account UUID
+- `username`: case-insensitive local sign-in name
+- `password_hash`: scrypt hash; plaintext credentials are never persisted
+- `created_at`
+
+### AccountSession
+- `token_hash`: digest of the opaque session cookie, never the raw token
+- `account_id`: owning account
+- `csrf_token`
+- `expires_at`
+
 ### Project
 - `id`: UUID
-- `owner_id`: user or local-owner identifier
+- `owner_id`: authenticated account UUID used for project-scoped authorization
 - `name`
-- `status`: active/archived/deleted (soft delete)
 - `target_profile`: static_render/general_purpose/game_asset (expandable enum)
 - `base_model_asset_id`: selected allowlisted base model; defaults to `character_cc3_morphs_v1`
 - `draft_morphs`: complete selected-manifest control map saved before final Blender compile
 - `draft_revision`: optimistic concurrency counter for draft morph-map writes; independent of `scene_version`
-- `draft_appearance`: selected eye, compatible body preset, and skin asset IDs; persisted without Blender geometry or `scene_version` changes
-- `draft_skin_definition`: versioned semantic skin properties (`base.tone`, `base.undertone`, and `surface.roughness`) saved independently of paint strokes and applied during final compile
+- `draft_appearance`: selected eye, compatible body/head presets, and skin; persisted without Blender geometry or `scene_version` changes before compile.
+- `draft_skin_definition`: versioned semantic skin properties (`base.tone`, `base.undertone`, `surface.roughness`, and head-map freckle settings) saved independently of paint strokes and applied during final compile
 - `draft_skin_revision`: optimistic concurrency counter for semantic skin definition writes; independent of `scene_version`
-- `draft_skin_paint_strokes`: bounded UV paint/erase operations associated with the selected skin
+- `draft_skin_paint_strokes`: bounded UV paint/erase operations associated with the selected skin; each point stores normalized `u`, `v`, and optional pen pressure (defaults to `1` for existing clients and saved projects)
 - `active_phase_id`
 - `scene_version`: monotonic integer
 - `manifest_version`
@@ -52,6 +63,7 @@ The database schema may evolve, but these semantics must remain stable.
 - `current_revision`, `geometry_hash` where available
 - `validation_state`, `validation_report_json`
 - `created_at`, `updated_at`
+
 
 ### ModelingJob
 - `id`, `project_id`, `phase_id`
@@ -97,9 +109,11 @@ The database schema may evolve, but these semantics must remain stable.
 See `examples/project_manifest.json`.
 
 ## Consistency rules
+- Local MVP project data is retained until its owner explicitly deletes the project. Deletion is permanent: project state (including checkpoints), reference uploads, and the per-project Blender workspace are removed immediately. There is no trash, timed retention window, or automatic project expiry.
 - Manifest and `.blend` scene version must match on commit.
 - Draft morph/appearance updates advance only draft state and use browser previews. The initial scene applies saved draft values and selected assets together only during explicit, approval-gated final Save / Compile or export. Later changes require explicit, supported scene operations.
 - Semantic skin preview edits remain local until saved to the project draft; only the validated saved definition and selected skin are applied together during explicit final compile. AI interpretation returns a proposal and never saves it automatically.
+- Version 1 semantic skin definitions are upgraded to version 2 with freckles disabled when loaded; freckles are reproducible from their saved seed and are generated only on the head diffuse map.
 - If an operation crashes after scene change but before database commit, discard/restore the uncommitted scene artifact.
 - A checkpoint includes both Blender scene and manifest.
 - A stale command is not executed against a newer scene without revalidation.

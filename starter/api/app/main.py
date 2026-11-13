@@ -2,33 +2,40 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timezone
-from functools import lru_cache
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache, wraps
 import hashlib
+import ipaddress
 import json
 import logging
 import math
 import os
 from pathlib import Path
 import re
+import secrets
+import sqlite3
 import shutil
 import tempfile
 from threading import Lock
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Callable, Literal, Union
 from uuid import UUID, uuid4
 import zipfile
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .assets import InvalidImageError, LocalAssetStore, validate_image
+from .auth import hash_password, new_session_token, token_digest, verify_password
 from .assistant import AssistantGuidance, AssistantProposal, AssistantTurn, InvalidAssistantTurn, parse_assistant_turn
 from .blender_adapter import (
+    API_TRANSACTION_CONTRACT_VERSION,
     MAX_PREVIEW_BYTES,
     MAX_SCENE_BYTES,
+    STAGED_WORKER_CONTRACT_VERSION,
     BlenderAdapterError,
     configured_blender_executable,
     run_blender_operation,
@@ -43,6 +50,18 @@ from .planning import (
     validate_plan,
 )
 from .repository import SQLiteProjectRepository, create_default_repository
+from .transactions import (
+    ProjectLockError,
+    ProjectLockTimeout,
+    ensure_regular_contained_path,
+    fsync_directory,
+    fsync_file,
+    hold_project_lock,
+    process_identity,
+    require_project_lock,
+    sha256_file,
+    terminate_matching_process_group,
+)
 from .semantic_skin import (
     SkinDefinition,
     SkinDefinitionPatch,
@@ -128,11 +147,51 @@ def validate_body_preset_id(value: str | None) -> str | None:
         raise ValueError("preset_id must match an installed CC5 character preset")
     return value
 
+
+def validate_character_preset_ids(value: dict[str, str | None] | None) -> dict[str, str | None]:
+    preset_ids = {"body": None, "head": None} if value is None else value
+    if set(preset_ids) != {"body", "head"}:
+        raise ValueError("preset_ids must contain body and head selections")
+    for kind, preset_id in preset_ids.items():
+        validate_body_preset_id(preset_id)
+        if preset_id is not None and CC5_BODY_PRESETS_BY_ID[preset_id].get("kind") != kind:
+            raise ValueError(f"{kind}_preset_id must identify a {kind} preset")
+    return preset_ids
+
+
+def character_preset_ids_from_legacy(preset_id: str | None) -> dict[str, str | None]:
+    preset_ids = {"body": None, "head": None}
+    if preset_id is not None:
+        kind = CC5_BODY_PRESETS_BY_ID[preset_id].get("kind", "body")
+        preset_ids[kind] = preset_id
+    return preset_ids
+
+
+def saved_character_preset_ids(appearance: dict[str, Any]) -> dict[str, str | None]:
+    body_preset_id = appearance.get("body_preset_id")
+    head_preset_id = appearance.get("head_preset_id")
+    if head_preset_id is None and body_preset_id in CC5_BODY_PRESETS_BY_ID:
+        if CC5_BODY_PRESETS_BY_ID[body_preset_id].get("kind") == "head":
+            body_preset_id, head_preset_id = None, body_preset_id
+    return validate_character_preset_ids({"body": body_preset_id, "head": head_preset_id})
+
+
 app = FastAPI(title="C3Canvas API", version="0.1.0")
 PREVIEW_MIGRATION_LOCK = Lock()
 MORPH_PREVIEW_LOCKS: dict[UUID, Lock] = {}
 MORPH_PREVIEW_LOCKS_GUARD = Lock()
 LOGGER = logging.getLogger(__name__)
+SESSION_COOKIE_NAME = "c3canvas_session"
+SESSION_LIFETIME = timedelta(days=7)
+SESSION_MAX_AGE_SECONDS = int(SESSION_LIFETIME.total_seconds())
+AUTH_ORIGINS = {
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+}
 
 
 def _is_local_request(request: Request) -> bool:
@@ -152,29 +211,94 @@ def _is_local_request(request: Request) -> bool:
     return remote in {"127.0.0.1", "::1", "localhost"}
 
 
+def _is_loopback_peer(request: Request) -> bool:
+    client = request.client
+    host = client.host if client is not None else ""
+    if host in {"testclient", "testserver", "localhost"}:
+        return True
+    try:
+        return ipaddress.ip_address(host.split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
+
+
 @app.middleware("http")
-async def enforce_local_or_token_auth(request: Request, call_next):
-    if request.url.path.startswith("/api/v1/projects") or request.url.path.startswith("/api/v1/copilot"):
-        api_token = os.getenv("COMODEL_API_TOKEN")
-        if api_token:
-            auth_header = request.headers.get("authorization", "")
-            if not auth_header.lower().startswith("bearer "):
+async def enforce_account_project_access(request: Request, call_next):
+    path = request.url.path
+    is_auth_route = path.startswith("/api/v1/auth/")
+    is_project_route = path == "/api/v1/projects" or path.startswith("/api/v1/projects/")
+    if (
+        (is_auth_route or is_project_route)
+        and os.getenv("APP_ENV", "development").lower() != "production"
+        and not _is_loopback_peer(request)
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": {"code": "REMOTE_ACCESS_DISABLED", "message": "Remote account access requires APP_ENV=production."}},
+        )
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin")
+        if origin and origin.rstrip("/") not in AUTH_ORIGINS:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": {"code": "ORIGIN_NOT_ALLOWED", "message": "This request origin is not allowed."}},
+            )
+
+    account_session = None
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_token and (is_auth_route or is_project_route):
+        account_session = REPOSITORY.get_session(
+            token_digest(session_token),
+            datetime.now(timezone.utc).isoformat(),
+        )
+    request.state.account_id = account_session["id"] if account_session else None
+    request.state.session_hash = account_session["token_hash"] if account_session else None
+    request.state.csrf_token = account_session["csrf_token"] if account_session else None
+
+    if is_project_route:
+        if account_session is None:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": {"code": "AUTHENTICATION_REQUIRED", "message": "Sign in to access your projects."}},
+            )
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            supplied_csrf = request.headers.get("x-csrf-token", "")
+            if not supplied_csrf or not secrets.compare_digest(
+                supplied_csrf,
+                account_session["csrf_token"],
+            ):
                 return JSONResponse(
-                    status_code=401,
-                    content={"detail": {"code": "UNAUTHORIZED", "message": "A bearer token is required for API access."}},
+                    status_code=403,
+                    content={"detail": {"code": "CSRF_VALIDATION_FAILED", "message": "Refresh the page and try again."}},
                 )
-            supplied_token = auth_header[7:].strip()
-            if supplied_token != api_token:
+        project_match = re.match(r"^/api/v1/projects/([0-9a-fA-F-]{36})(?:/|$)", path)
+        if project_match:
+            try:
+                project_id = UUID(project_match.group(1))
+            except ValueError:
+                project_id = None
+            if project_id is not None and REPOSITORY.get_project_owner(project_id) != account_session["id"]:
                 return JSONResponse(
-                    status_code=401,
-                    content={"detail": {"code": "UNAUTHORIZED", "message": "The provided bearer token is invalid."}},
+                    status_code=404,
+                    content={"detail": {"code": "PROJECT_NOT_FOUND"}},
                 )
-            return await call_next(request)
+    elif path == "/api/v1/auth/logout" and account_session:
+        supplied_csrf = request.headers.get("x-csrf-token", "")
+        if not supplied_csrf or not secrets.compare_digest(
+            supplied_csrf,
+            account_session["csrf_token"],
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": {"code": "CSRF_VALIDATION_FAILED", "message": "Refresh the page and try again."}},
+            )
+    elif path.startswith("/api/v1/copilot") and not is_auth_route:
         if not _is_local_request(request):
             return JSONResponse(
                 status_code=403,
-                content={"detail": {"code": "ACCESS_DENIED", "message": "Project routes require a loopback request or an explicit API token."}},
+                content={"detail": {"code": "ACCESS_DENIED", "message": "Copilot bridge routes are loopback-only."}},
             )
+
     return await call_next(request)
 
 PhaseStatus = Literal[
@@ -196,6 +320,27 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     target_profile: TargetProfile = "general_purpose"
     base_model_asset_id: AssetId = "character_cc3_morphs_v1"
+
+
+class AccountCredentials(BaseModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+    password: str = Field(min_length=12, max_length=128)
+
+
+class AccountLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AccountSummary(BaseModel):
+    id: UUID
+    username: str
+    created_at: datetime
+
+
+class AuthSessionResponse(BaseModel):
+    account: AccountSummary | None
+    csrf_token: str | None
 
 
 class ProjectUpdate(BaseModel):
@@ -265,12 +410,13 @@ class SkinPaintPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
     u: float = Field(ge=0, le=1)
     v: float = Field(ge=0, le=1)
+    pressure: float = Field(default=1, ge=0.05, le=1)
 
 
 class SkinPaintStroke(BaseModel):
     model_config = ConfigDict(extra="forbid")
     material: Literal["Std_Skin_Head", "Std_Skin_Body", "Std_Skin_Arm", "Std_Skin_Leg"]
-    tool: Literal["paint", "erase"]
+    tool: Literal["paint", "freckles", "erase"]
     color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     radius: float = Field(gt=0, le=0.1)
     opacity: float = Field(gt=0, le=1)
@@ -312,6 +458,7 @@ class ImportBaseModelArguments(BaseModel):
     asset_id: AssetId
     morphs: dict[str, float] | None = None
     preset_id: str | None = Field(default=None, min_length=1, max_length=100)
+    preset_ids: dict[str, str | None] | None = None
     skin_asset_id: str | None = Field(default=None, min_length=1, max_length=100)
     skin_paint_strokes: list[SkinPaintStroke] = Field(default_factory=list, max_length=500)
     skin_definition: SkinDefinition = Field(default_factory=SkinDefinition)
@@ -325,6 +472,19 @@ class ImportBaseModelArguments(BaseModel):
     @classmethod
     def validate_preset(cls, value):
         return validate_body_preset_id(value)
+
+    @field_validator("preset_ids")
+    @classmethod
+    def validate_preset_ids(cls, value):
+        return None if value is None else validate_character_preset_ids(value)
+
+    @model_validator(mode="after")
+    def normalize_presets(self):
+        if self.preset_ids is None:
+            self.preset_ids = character_preset_ids_from_legacy(self.preset_id)
+        elif self.preset_id is not None:
+            raise ValueError("Use preset_ids instead of preset_id when selecting multiple presets")
+        return self
 
     @field_validator("skin_paint_strokes")
     @classmethod
@@ -385,6 +545,7 @@ class DraftAppearanceUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     eye_asset_id: str | None
     body_preset_id: str | None
+    head_preset_id: str | None = None
     skin_asset_id: str | None = None
     skin_paint_strokes: list[SkinPaintStroke] | None = Field(default=None, max_length=500)
 
@@ -397,6 +558,12 @@ class DraftAppearanceUpdateRequest(BaseModel):
     def require_skin_asset_for_paint(self):
         if self.skin_paint_strokes and self.skin_asset_id is None:
             raise ValueError("skin paint strokes require a selected skin asset")
+        legacy_presets = saved_character_preset_ids({
+            "body_preset_id": self.body_preset_id,
+            "head_preset_id": self.head_preset_id,
+        })
+        self.body_preset_id = legacy_presets["body"]
+        self.head_preset_id = legacy_presets["head"]
         return self
 
 
@@ -441,7 +608,7 @@ class ApplyCC3MorphControlsTool(BaseModel):
     operation_id: UUID
     expected_scene_version: int = Field(ge=0)
     scope_component_ids: list[str] = Field(min_length=1, max_length=1)
-    dependency_component_ids: list[str] = Field(default_factory=list, max_length=0)
+    dependency_component_ids: list[str] = Field(default_factory=list, max_length=1)
     arguments: ApplyCC3MorphControlsArguments
 
 
@@ -451,7 +618,7 @@ class BakeCC3MorphControlsTool(BaseModel):
     operation_id: UUID
     expected_scene_version: int = Field(ge=0)
     scope_component_ids: list[str] = Field(min_length=1, max_length=1)
-    dependency_component_ids: list[str] = Field(default_factory=list, max_length=0)
+    dependency_component_ids: list[str] = Field(default_factory=list, max_length=1)
     arguments: ApplyCC3MorphControlsArguments
 
 
@@ -460,7 +627,8 @@ class ApplyCC3BodyPresetArguments(BaseModel):
     component_id: str = Field(min_length=1, max_length=64)
     asset_id: AssetId
     morphs: dict[str, float] = Field(min_length=1, max_length=4096)
-    preset_id: str | None = Field(min_length=1, max_length=100)
+    preset_id: str | None = Field(default=None, min_length=1, max_length=100)
+    preset_ids: dict[str, str | None] | None = None
 
     @field_validator("morphs", mode="before")
     @classmethod
@@ -472,6 +640,19 @@ class ApplyCC3BodyPresetArguments(BaseModel):
     def validate_preset(cls, value):
         return validate_body_preset_id(value)
 
+    @field_validator("preset_ids")
+    @classmethod
+    def validate_preset_ids(cls, value):
+        return None if value is None else validate_character_preset_ids(value)
+
+    @model_validator(mode="after")
+    def normalize_presets(self):
+        if self.preset_ids is None:
+            self.preset_ids = character_preset_ids_from_legacy(self.preset_id)
+        elif self.preset_id is not None:
+            raise ValueError("Use preset_ids instead of preset_id when selecting multiple presets")
+        return self
+
 
 class ApplyCC3BodyPresetTool(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -479,7 +660,7 @@ class ApplyCC3BodyPresetTool(BaseModel):
     operation_id: UUID
     expected_scene_version: int = Field(ge=0)
     scope_component_ids: list[str] = Field(min_length=1, max_length=1)
-    dependency_component_ids: list[str] = Field(default_factory=list, max_length=0)
+    dependency_component_ids: list[str] = Field(default_factory=list, max_length=1)
     arguments: ApplyCC3BodyPresetArguments
 
 
@@ -539,6 +720,7 @@ class Project(BaseModel):
         default_factory=lambda: {
             "eye_asset_id": None,
             "body_preset_id": None,
+            "head_preset_id": None,
             "skin_asset_id": None,
         }
     )
@@ -572,13 +754,7 @@ class ModelingValidationResult(BaseModel):
 
 class ModelingOperation(BaseModel):
     operation_id: UUID
-    tool_name: Literal[
-        "import_base_model",
-        "apply_cc3_morph_controls",
-        "apply_cc3_body_preset",
-        "bake_cc3_morph_controls",
-        "attach_eye_asset",
-    ]
+    tool_name: str
     request_hash: str
     status: Literal["completed"]
     mode: Literal["blender"]
@@ -748,7 +924,7 @@ def available_cc5_body_presets() -> list[dict[str, str]]:
         standalone = cc5_standalone_preset_info(preset["id"])
         if cc5_body_preset_info(preset["id"]) is None and standalone is None:
             continue
-        entry = {"id": preset["id"], "label": preset["label"]}
+        entry = {"id": preset["id"], "label": preset["label"], "kind": preset["kind"]}
         if standalone is not None:
             entry.update({key: standalone[key] for key in ("glb_path", "glb_sha256")})
         presets.append(entry)
@@ -1140,10 +1316,10 @@ async def enforce_reference_request_limit(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=sorted(AUTH_ORIGINS),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "Authorization", "Idempotency-Key"],
+    allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "X-CSRF-Token"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=1)
 
@@ -1153,6 +1329,357 @@ def get_project_or_404(project_id: UUID) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND"})
     return project
+
+
+def _transaction_output_directory(project_id: UUID) -> Path:
+    require_project_lock(project_id)
+    data_directory = REPOSITORY.path.parent.resolve()
+    projects_directory = data_directory / "blender-projects"
+    if projects_directory.is_symlink():
+        raise ProjectLockError("Committed project directory cannot be a symbolic link.")
+    output_directory = projects_directory / str(project_id) / "output"
+    if any(path.is_symlink() for path in (projects_directory / str(project_id), output_directory)):
+        raise ProjectLockError("Committed project paths cannot be symbolic links.")
+    return output_directory
+
+
+def _restore_transaction_artifacts(transaction: dict[str, Any]) -> None:
+    project_id = UUID(transaction["project_id"])
+    require_project_lock(project_id)
+    output_directory = _transaction_output_directory(project_id)
+    output_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup_root = Path(transaction["backup_path"])
+    transactions_root = (REPOSITORY.path.parent / "transactions").resolve()
+    if backup_root.is_symlink() or transactions_root not in backup_root.resolve().parents:
+        raise ProjectLockError("Transaction backup path escaped its approved directory.")
+    manifest_path = backup_root / "backup-manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ProjectLockError("Durable transaction backup manifest is unavailable.")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ProjectLockError("Transaction backup manifest could not be verified.") from error
+    if manifest != {
+        "scene.blend": transaction["backup_scene_sha256"],
+        "preview.glb": transaction["backup_preview_sha256"],
+    }:
+        raise ProjectLockError("Transaction backup manifest does not match the journal.")
+
+    for filename, hash_field in (
+        ("scene.blend", "backup_scene_sha256"),
+        ("preview.glb", "backup_preview_sha256"),
+    ):
+        destination = output_directory / filename
+        if destination.is_symlink():
+            raise ProjectLockError("Committed artifact path cannot be a symbolic link.")
+        expected_hash = transaction[hash_field]
+        if expected_hash is None:
+            destination.unlink(missing_ok=True)
+            if destination.exists():
+                raise ProjectLockError(f"Could not remove uncommitted {filename}.")
+            continue
+        backup = backup_root / filename
+        if (
+            backup.is_symlink()
+            or not backup.is_file()
+            or sha256_file(backup) != expected_hash
+        ):
+            raise ProjectLockError(f"Verified backup for {filename} is unavailable.")
+        temporary = output_directory / f".{filename}.{transaction['transaction_id']}.restore"
+        if temporary.is_symlink():
+            raise ProjectLockError("Artifact restore path cannot be a symbolic link.")
+        shutil.copy2(backup, temporary)
+        fsync_file(temporary)
+        os.replace(temporary, destination)
+        if sha256_file(destination) != expected_hash:
+            raise ProjectLockError(f"Restored {filename} failed hash verification.")
+    fsync_directory(output_directory)
+
+
+def _rollback_modeling_transaction(transaction: dict[str, Any]) -> None:
+    project_id = UUID(transaction["project_id"])
+    require_project_lock(project_id)
+    state = transaction["state"]
+    if state == "BLOCKED":
+        raise ProjectLockError("Project has a blocked transaction requiring operator recovery.")
+    if transaction.get("worker_pid") is not None:
+        terminated = terminate_matching_process_group(
+            pid=transaction["worker_pid"],
+            start_ticks=transaction["worker_start_ticks"],
+            boot_id=transaction["worker_boot_id"],
+            process_group=transaction["worker_process_group"],
+        )
+        if not terminated:
+            raise ProjectLockError("Orphaned Blender worker could not be safely terminated.")
+    if state in {"PREPARED", "COMMITTING"}:
+        transaction = REPOSITORY.update_modeling_transaction(
+            transaction["transaction_id"], "ROLLING_BACK"
+        )
+        state = "ROLLING_BACK"
+    if state != "ROLLING_BACK":
+        return
+    try:
+        if transaction["candidate_scene_sha256"] is not None:
+            _restore_transaction_artifacts(transaction)
+        REPOSITORY.restore_modeling_transaction_metadata(transaction["transaction_id"])
+    except Exception as error:
+        current = REPOSITORY.get_modeling_transaction(transaction["transaction_id"])
+        if current is not None and current["state"] == "ROLLING_BACK":
+            REPOSITORY.update_modeling_transaction(
+                transaction["transaction_id"], "BLOCKED",
+                updates={"error": "Transaction rollback could not verify and restore all committed artifacts."},
+            )
+        if isinstance(error, ProjectLockError):
+            raise
+        raise ProjectLockError("Transaction rollback could not verify and restore all committed artifacts.") from error
+
+
+def _block_modeling_transaction(transaction: dict[str, Any], error: str) -> None:
+    if transaction["state"] != "BLOCKED":
+        REPOSITORY.update_modeling_transaction(
+            transaction["transaction_id"], "BLOCKED", updates={"error": error}
+        )
+
+
+def _verify_latest_committed_transaction(project_id: UUID) -> None:
+    transaction = REPOSITORY.get_latest_committed_modeling_transaction(project_id)
+    if transaction is None:
+        return
+    project = REPOSITORY.get(project_id)
+    output_directory = _transaction_output_directory(project_id)
+    valid = project is not None and project.scene_version == transaction["target_scene_version"]
+    for filename, hash_field in (
+        ("scene.blend", "candidate_scene_sha256"),
+        ("preview.glb", "candidate_preview_sha256"),
+    ):
+        expected_hash = transaction[hash_field]
+        artifact = output_directory / filename
+        valid = valid and expected_hash is not None and not artifact.is_symlink() and artifact.is_file()
+        if valid:
+            valid = sha256_file(artifact) == expected_hash
+    if not valid:
+        _block_modeling_transaction(
+            transaction,
+            "Committed metadata and artifact hashes do not agree.",
+        )
+        raise ProjectLockError("Committed project artifacts failed integrity verification.")
+
+
+def recover_project_transactions(project_id: UUID) -> None:
+    require_project_lock(project_id)
+    transactions = REPOSITORY.list_unresolved_modeling_transactions(str(project_id))
+    for transaction in transactions:
+        if transaction["state"] not in {"PREPARED", "COMMITTING", "ROLLING_BACK", "BLOCKED"}:
+            raise ProjectLockError("Project contains an invalid transaction journal state.")
+        if transaction["state"] == "BLOCKED":
+            raise ProjectLockError("Project has a blocked transaction requiring operator recovery.")
+        try:
+            _rollback_modeling_transaction(transaction)
+        except Exception as error:
+            current = REPOSITORY.get_modeling_transaction(transaction["transaction_id"])
+            if current is not None and current["state"] not in {"BLOCKED", "ROLLED_BACK"}:
+                _block_modeling_transaction(current, str(error)[:1000])
+            raise
+    _verify_latest_committed_transaction(project_id)
+
+
+def recover_blocked_modeling_transaction(project_id: UUID, transaction_id: str) -> None:
+    require_project_lock(project_id)
+    transaction = REPOSITORY.get_modeling_transaction(transaction_id)
+    if transaction is None or transaction["project_id"] != str(project_id):
+        raise KeyError("Blocked transaction does not belong to this project.")
+    if transaction["state"] != "BLOCKED":
+        raise ValueError("Explicit blocked recovery requires a BLOCKED transaction.")
+    transaction = REPOSITORY.update_modeling_transaction(
+        transaction_id, "ROLLING_BACK"
+    )
+    try:
+        if transaction["candidate_scene_sha256"] is not None:
+            _restore_transaction_artifacts(transaction)
+        REPOSITORY.restore_modeling_transaction_metadata(transaction_id)
+    except Exception as error:
+        current = REPOSITORY.get_modeling_transaction(transaction_id)
+        if current is not None and current["state"] == "ROLLING_BACK":
+            REPOSITORY.update_modeling_transaction(
+                transaction_id,
+                "BLOCKED",
+                updates={"error": f"Explicit recovery failed: {error}"[:1000]},
+            )
+        raise
+
+
+def project_transaction_guard(handler: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(handler)
+    def guarded(project_id: UUID, *args: Any, **kwargs: Any) -> Any:
+        try:
+            with hold_project_lock(REPOSITORY.path.parent, project_id):
+                recover_project_transactions(project_id)
+                return handler(project_id, *args, **kwargs)
+        except ProjectLockTimeout as error:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "PROJECT_BUSY", "message": str(error)},
+                headers={"Retry-After": "1"},
+            ) from error
+        except ProjectLockError as error:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "PROJECT_TRANSACTION_BLOCKED", "message": str(error)},
+            ) from error
+
+    return guarded
+
+
+def _run_modeling_worker(
+    transaction: dict[str, Any] | None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    if transaction is None:
+        return run_blender_operation(**kwargs)
+
+    def record_worker(process: Any) -> None:
+        identity = process_identity(process.pid)
+        REPOSITORY.record_modeling_worker(
+            transaction["transaction_id"],
+            worker_pid=process.pid,
+            worker_start_ticks=str(identity["start_ticks"]),
+            worker_boot_id=str(identity["boot_id"]),
+            worker_process_group=int(identity["process_group"]),
+        )
+
+    return run_blender_operation(
+        **kwargs,
+        transaction_id=UUID(transaction["transaction_id"]),
+        attempt_id=UUID(transaction["attempt_id"]),
+        staging_directory=Path(transaction["staging_path"]),
+        worker_started_callback=record_worker,
+    )
+
+
+def _commit_modeling_operation(
+    project: Project,
+    operation: dict[str, Any],
+    transaction: dict[str, Any],
+) -> None:
+    project_id = UUID(transaction["project_id"])
+    require_project_lock(project_id)
+    if project.scene_version != transaction["target_scene_version"]:
+        raise ProjectLockError("Modeling result scene version does not match the transaction.")
+
+    data_directory = REPOSITORY.path.parent.resolve()
+    transactions_directory = data_directory / "transactions"
+    if transactions_directory.is_symlink():
+        raise ProjectLockError("Transaction directory cannot be a symbolic link.")
+    if transactions_directory.is_symlink():
+        raise ProjectLockError("Transaction directory cannot be a symbolic link.")
+    output_directory = _transaction_output_directory(project_id)
+    project_directory = output_directory.parent
+    project_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    staging_root = Path(transaction["staging_path"])
+    if staging_root.is_symlink() or transactions_directory.resolve() not in staging_root.resolve().parents:
+        raise ProjectLockError("Transaction staging path escaped its approved directory.")
+    candidate_scene = ensure_regular_contained_path(staging_root, "output/scene_candidate.blend")
+    candidate_preview = ensure_regular_contained_path(staging_root, "output/preview_candidate.glb")
+    if (
+        candidate_scene.stat().st_size > MAX_SCENE_BYTES
+        or candidate_preview.stat().st_size > MAX_PREVIEW_BYTES
+    ):
+        raise ProjectLockError("Staged Blender artifact exceeds its configured size limit.")
+    if (
+        candidate_scene.stat().st_dev != output_directory.stat().st_dev
+        or candidate_preview.stat().st_dev != output_directory.stat().st_dev
+    ):
+        raise ProjectLockError("Staging and committed artifacts must share a filesystem.")
+    fsync_file(candidate_scene)
+    fsync_file(candidate_preview)
+    fsync_directory(candidate_scene.parent)
+    candidate_scene_hash = sha256_file(candidate_scene)
+    candidate_preview_hash = sha256_file(candidate_preview)
+
+    backup_root = Path(transaction["backup_path"])
+    if backup_root.is_symlink() or transactions_directory.resolve() not in backup_root.resolve().parents:
+        raise ProjectLockError("Transaction backup path escaped its approved directory.")
+    backup_root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    if backup_root.stat().st_dev != output_directory.stat().st_dev:
+        raise ProjectLockError("Transaction backups and committed artifacts must share a filesystem.")
+    backup_hashes: dict[str, str | None] = {}
+    for filename in ("scene.blend", "preview.glb"):
+        source = output_directory / filename
+        backup = backup_root / filename
+        if source.is_symlink():
+            raise ProjectLockError("Committed artifacts cannot be symbolic links.")
+        if source.exists():
+            if not source.is_file():
+                raise ProjectLockError("Committed artifacts must be regular files.")
+            shutil.copy2(source, backup)
+            fsync_file(backup)
+            backup_hashes[filename] = sha256_file(backup)
+            if backup_hashes[filename] != sha256_file(source):
+                raise ProjectLockError(f"Backup verification failed for {filename}.")
+        else:
+            backup_hashes[filename] = None
+    manifest = backup_root / "backup-manifest.json"
+    temporary_manifest = backup_root / ".backup-manifest.tmp"
+    with temporary_manifest.open("w", encoding="utf-8") as file:
+        file.write(json.dumps(backup_hashes, sort_keys=True, separators=(",", ":")))
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temporary_manifest, manifest)
+    fsync_directory(backup_root)
+    fsync_directory(backup_root.parent)
+    fsync_directory(transactions_directory)
+
+    previous_version = transaction["previous_scene_version"]
+    versioned_scene = output_directory / f"scene-v{previous_version}.blend"
+    if versioned_scene.is_symlink():
+        raise ProjectLockError("Versioned scene path cannot be a symbolic link.")
+    if versioned_scene.exists():
+        expected = backup_hashes["scene.blend"]
+        if expected is None or sha256_file(versioned_scene) != expected:
+            raise ProjectLockError("Existing scene checkpoint does not match the committed scene.")
+
+    transaction = REPOSITORY.update_modeling_transaction(
+        transaction["transaction_id"],
+        "COMMITTING",
+        updates={
+            "candidate_scene_sha256": candidate_scene_hash,
+            "candidate_preview_sha256": candidate_preview_hash,
+            "backup_scene_sha256": backup_hashes["scene.blend"],
+            "backup_preview_sha256": backup_hashes["preview.glb"],
+        },
+    )
+
+    if previous_version > 0 and not versioned_scene.exists():
+        backup_scene = backup_root / "scene.blend"
+        temporary_version = output_directory / f".scene-v{previous_version}.{transaction['transaction_id']}.tmp"
+        shutil.copy2(backup_scene, temporary_version)
+        fsync_file(temporary_version)
+        os.replace(temporary_version, versioned_scene)
+    os.replace(candidate_scene, output_directory / "scene.blend")
+    os.replace(candidate_preview, output_directory / "preview.glb")
+    fsync_directory(output_directory)
+    fsync_directory(project_directory)
+    fsync_directory(output_directory.parent.parent)
+    fsync_directory(data_directory)
+
+    if (
+        sha256_file(output_directory / "scene.blend") != candidate_scene_hash
+        or sha256_file(output_directory / "preview.glb") != candidate_preview_hash
+    ):
+        raise ProjectLockError("Promoted Blender artifacts failed hash verification.")
+    REPOSITORY.commit_modeling_transaction(
+        project,
+        transaction["transaction_id"],
+        operation,
+    )
+    _verify_latest_committed_transaction(project_id)
+    try:
+        shutil.rmtree(staging_root)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        LOGGER.exception("Could not remove completed transaction staging directory %s", staging_root)
 
 
 def create_component_record(
@@ -1166,9 +1693,10 @@ def create_component_record(
     geometry_hash: str | None = None,
     status: str = "draft",
     notes: str | None = None,
+    component_id: str | None = None,
 ) -> dict[str, Any]:
     component = {
-        "id": str(uuid4()),
+        "id": component_id or str(uuid4()),
         "display_name": display_name,
         "semantic_type": semantic_type,
         "status": status,
@@ -1186,7 +1714,11 @@ def create_component_record(
     return component
 
 
-def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dict[str, Any]:
+def execute_modeling_tool(
+    project: Project,
+    payload: ModelingToolRequest,
+    transaction: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if payload.tool_name == "attach_eye_asset":
         raise HTTPException(
             status_code=409,
@@ -1217,6 +1749,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
     verify_project_adapter(project)
     created_component_ids: list[str] = []
     updated_component_ids: list[str] = []
+    dependency_component_ids = payload.dependency_component_ids
     blender_result: dict[str, Any]
     rollback_checkpoint_id: str
     if payload.tool_name == "attach_eye_asset":
@@ -1269,7 +1802,8 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             **({"replace_component_id": existing_eyes["id"]} if existing_eyes else {}),
         }
         try:
-            blender_result = run_blender_operation(
+            blender_result = _run_modeling_worker(
+                transaction,
                 data_directory=REPOSITORY.path.parent,
                 project_id=project.id,
                 operation_id=payload.operation_id,
@@ -1342,17 +1876,19 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             "rollback_checkpoint_id": rollback_checkpoint_id,
         }
         project.operations.append(operation)
-        REPOSITORY.save(project)
+        if transaction is None:
+            REPOSITORY.save(project)
         return {
             "operation": operation,
             "project": project,
         }
     if payload.tool_name == "import_base_model":
         asset_id = payload.arguments.asset_id
-        preset_id = project.draft_appearance.get("body_preset_id")
+        preset_ids = saved_character_preset_ids(project.draft_appearance)
+        if not any(preset_ids.values()):
+            preset_ids = payload.arguments.preset_ids or {"body": None, "head": None}
+        has_presets = any(preset_ids.values())
         skin_asset_id = project.draft_appearance.get("skin_asset_id")
-        if preset_id is None:
-            preset_id = payload.arguments.preset_id
         manifest = CC3_MORPH_MANIFESTS.get(asset_id)
         if manifest is None or not asset_is_installed(asset_id):
             raise HTTPException(
@@ -1367,9 +1903,12 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                     "message": "Import the base model selected when this project was created.",
                 },
             )
-        if preset_id is not None and (
+        if has_presets and (
             asset_id != "character_cc5_rlcc3plus_all_morphs_v1"
-            or cc5_body_preset_info(preset_id) is None
+            or any(
+                preset_id is not None and cc5_body_preset_info(preset_id) is None
+                for preset_id in preset_ids.values()
+            )
         ):
             raise HTTPException(
                 status_code=409,
@@ -1422,6 +1961,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             phase_key="body_blockout",
             status="needs_review",
             notes=f"Pinned {ASSET_CONFIG[asset_id]['name']} base with its available slider controls.",
+            component_id=transaction["allocated_component_id"] if transaction is not None else None,
         )
         eye_component = None
         eye_asset = None
@@ -1464,8 +2004,8 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                     },
                 )
         arguments = {"component_id": component["id"], "asset_id": asset_id, "morphs": morphs}
-        if preset_id is not None:
-            arguments["preset_id"] = preset_id
+        if has_presets:
+            arguments["preset_ids"] = preset_ids
         if eye_asset is not None and eye_component is not None:
             arguments["eye_attachment"] = {
                 "asset_id": eye_asset["id"],
@@ -1480,7 +2020,8 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                     for stroke in project.draft_skin_paint_strokes
                 ]
         try:
-            blender_result = run_blender_operation(
+            blender_result = _run_modeling_worker(
+                transaction,
                 data_directory=REPOSITORY.path.parent,
                 project_id=project.id,
                 operation_id=payload.operation_id,
@@ -1526,11 +2067,11 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             or worker_result.get("morph_control_specs") not in (None, morph_specs)
             or worker_result.get("initial_morphs") != morphs
             or (
-                preset_id is not None
+                has_presets
                 and (
                     not isinstance(worker_result.get("body_preset"), dict)
                     or worker_result["body_preset"].get("component_id") != component["id"]
-                    or worker_result["body_preset"].get("preset_id") != preset_id
+                    or worker_result["body_preset"].get("preset_ids") != preset_ids
                     or worker_result["body_preset"].get("preset_mesh_name") != "CC_Base_Body"
                     or worker_result["body_preset"].get("preset_vertex_count")
                     != manifest.get("body_vertex_count")
@@ -1564,7 +2105,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 "component_shape_key_count" in manifest
                 and worker_result.get("component_shape_key_count")
                 != manifest["component_shape_key_count"]
-                + (manifest["mesh_count"] if preset_id is not None else 0)
+                + manifest["mesh_count"] * sum(preset_id is not None for preset_id in preset_ids.values())
             )
             or (
                 "shape_key_operations" in manifest
@@ -1652,7 +2193,8 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             component["source_asset"]["skin_asset_id"] = skin_asset["id"]
             component["source_asset"]["skin_definition"] = project.draft_skin_definition.model_dump(mode="json")
         component["cc3_morphs"] = {name: float(morphs[name]) for name in sorted(expected_morph_names)}
-        component["cc3_preset_id"] = preset_id
+        component["cc3_preset_id"] = preset_ids["body"]
+        component["cc3_head_preset_id"] = preset_ids["head"]
         component["notes"] = worker_result["warning"]
         project.components.append(component)
         created_component_ids.append(component["id"])
@@ -1684,7 +2226,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
         if payload.scope_component_ids != [component_id] or payload.dependency_component_ids:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "SCOPE_VIOLATION", "message": "Morph controls must scope exactly their body component."},
+                detail={"code": "SCOPE_VIOLATION", "message": "Morph controls must scope only their character body."},
             )
         component = next((item for item in project.components if item.get("id") == component_id), None)
         if component is None:
@@ -1724,10 +2266,14 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 )
         is_bake = payload.tool_name == "bake_cc3_morph_controls"
         is_preset_update = payload.tool_name == "apply_cc3_body_preset"
-        preset_id = payload.arguments.preset_id if is_preset_update else None
+        preset_ids = payload.arguments.preset_ids if is_preset_update else None
+        preset_count = sum(preset_id is not None for preset_id in (preset_ids or {}).values())
         if is_preset_update and (
             source_asset_id != "character_cc5_rlcc3plus_all_morphs_v1"
-            or preset_id is not None and cc5_body_preset_info(preset_id) is None
+            or any(
+                preset_id is not None and cc5_body_preset_info(preset_id) is None
+                for preset_id in (preset_ids or {}).values()
+            )
         ):
             raise HTTPException(
                 status_code=409,
@@ -1754,9 +2300,10 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             "morphs": morphs,
         }
         if is_preset_update:
-            operation_arguments["preset_id"] = preset_id
+            operation_arguments["preset_ids"] = preset_ids
         try:
-            blender_result = run_blender_operation(
+            blender_result = _run_modeling_worker(
+                transaction,
                 data_directory=REPOSITORY.path.parent,
                 project_id=project.id,
                 operation_id=payload.operation_id,
@@ -1764,7 +2311,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 operation=payload.tool_name,
                 arguments=operation_arguments,
                 scope_component_ids=payload.scope_component_ids,
-                dependency_component_ids=payload.dependency_component_ids,
+                dependency_component_ids=[],
             )
         except BlenderAdapterError as error:
             raise HTTPException(
@@ -1793,22 +2340,22 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             expected_key_count = (
                 component.get("source_asset", {}).get("body_shape_key_count", 1)
                 - 1
-                + int(preset_id is not None)
+                + preset_count
             )
             expected_component_key_count = (
                 manifest.get("component_shape_key_count", manifest["mesh_count"])
                 - manifest["mesh_count"]
-                + manifest["mesh_count"] * int(preset_id is not None)
+                + manifest["mesh_count"] * preset_count
             )
             valid_morph_operation = (
                 worker_result.get("morphs") == morphs
-                and worker_result.get("preset_id") == preset_id
+                and worker_result.get("preset_ids") == preset_ids
                 and worker_result.get("preset_mesh_name")
-                == ("CC_Base_Body" if preset_id is not None else None)
+                == ("CC_Base_Body" if preset_count else None)
                 and set(worker_result.get("preset_following_mesh_names", []))
                 == (
                     set(manifest.get("mesh_names", [])) - {"CC_Base_Body"}
-                    if preset_id is not None
+                    if preset_count
                     else set()
                 )
                 and worker_result.get("preset_vertex_count")
@@ -1825,6 +2372,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 component.get("source_asset", {}).get("body_shape_key_count", 1)
                 - 1
                 + int(component.get("cc3_preset_id") is not None)
+                + int(component.get("cc3_head_preset_id") is not None)
             )
             valid_morph_operation = (
                 worker_result.get("morphs") == morphs
@@ -1834,7 +2382,10 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
                 valid_morph_operation = (
                     worker_result.get("component_shape_key_count")
                     == manifest["component_shape_key_count"] - manifest["mesh_count"]
-                    + manifest["mesh_count"] * int(component.get("cc3_preset_id") is not None)
+                    + manifest["mesh_count"] * (
+                        int(component.get("cc3_preset_id") is not None)
+                        + int(component.get("cc3_head_preset_id") is not None)
+                    )
                 )
         if not valid_morph_operation:
             raise HTTPException(
@@ -1845,12 +2396,14 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
             component["cc3_morphs"] = {name: 0.0 for name in morph_specs_by_id}
             component["morphs_baked"] = True
             component["cc3_preset_id"] = None
+            component["cc3_head_preset_id"] = None
             component["bake_checkpoint_id"] = rollback_checkpoint_id
             component["geometry_hash"] = worker_result["baked_geometry_hash"]
             component["baked_shape_key_count"] = worker_result["shape_key_count"]
         elif is_preset_update:
             component["cc3_morphs"] = morphs
-            component["cc3_preset_id"] = preset_id
+            component["cc3_preset_id"] = preset_ids["body"]
+            component["cc3_head_preset_id"] = preset_ids["head"]
         else:
             component["cc3_morphs"] = morphs
         component["revision"] = int(component.get("revision", 1)) + 1
@@ -1861,11 +2414,10 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
         summary = (
             "Baked the current morph values into the character meshes and removed their editable shape keys."
             if is_bake
-            else             f"Saved {CC5_BODY_PRESETS_BY_ID[preset_id]['label'] if preset_id else 'the neutral preset state'} and current morph values to Blender."
+            else f"Saved {', '.join(CC5_BODY_PRESETS_BY_ID[preset_id]['label'] for preset_id in preset_ids.values() if preset_id) or 'the neutral preset state'} and current morph values to Blender."
             if is_preset_update
             else "Saved the morph values to Blender and refreshed the character preview."
         )
-
     if phase is not None:
         phase.status = "awaiting_review"
     project.scene_version += 1
@@ -1970,7 +2522,7 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
         "expected_scene_version": payload.expected_scene_version,
         "scene_version": project.scene_version,
         "scope_component_ids": payload.scope_component_ids,
-        "dependency_component_ids": payload.dependency_component_ids,
+        "dependency_component_ids": dependency_component_ids,
         "created_component_ids": created_component_ids,
         "updated_component_ids": updated_component_ids,
         "validation_results": validation_results,
@@ -1979,7 +2531,8 @@ def execute_modeling_tool(project: Project, payload: ModelingToolRequest) -> dic
         "rollback_checkpoint_id": rollback_checkpoint_id,
     }
     project.operations.append(operation)
-    REPOSITORY.save(project)
+    if transaction is None:
+        REPOSITORY.save(project)
     return {"operation": operation, "project": project}
 
 def save_checkpoint(project: Project, label: str) -> dict[str, Any]:
@@ -2326,8 +2879,110 @@ def read_base_model_startup_preview(
     )
 
 
+def _account_summary(account: dict[str, str]) -> AccountSummary:
+    return AccountSummary(
+        id=account["id"],
+        username=account["username"],
+        created_at=account["created_at"],
+    )
+
+
+def _issue_account_session(account_id: str) -> tuple[str, str]:
+    token = new_session_token()
+    csrf_token = new_session_token()
+    expires_at = (datetime.now(timezone.utc) + SESSION_LIFETIME).isoformat()
+    REPOSITORY.create_session(
+        token_digest(token),
+        account_id,
+        csrf_token,
+        expires_at,
+    )
+    return token, csrf_token
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=os.getenv("APP_ENV", "development").lower() == "production",
+        samesite="strict",
+        path="/api/v1",
+    )
+
+
+@app.post("/api/v1/auth/register", response_model=AuthSessionResponse, status_code=201)
+def register_account(payload: AccountCredentials, response: Response) -> AuthSessionResponse:
+    registration_default = "false" if os.getenv("APP_ENV", "development").lower() == "production" else "true"
+    if os.getenv("ALLOW_ACCOUNT_REGISTRATION", registration_default).lower() not in {"1", "true", "yes", "on"}:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ACCOUNT_REGISTRATION_DISABLED", "message": "Account registration is disabled."},
+        )
+    username = payload.username.lower()
+    account_id = str(uuid4())
+    try:
+        REPOSITORY.create_account(
+            account_id,
+            username,
+            hash_password(payload.password),
+            datetime.now(timezone.utc).isoformat(),
+        )
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ACCOUNT_ALREADY_EXISTS", "message": "That username is already registered."},
+        ) from error
+    token, csrf_token = _issue_account_session(account_id)
+    _set_session_cookie(response, token)
+    account = REPOSITORY.get_account(account_id)
+    if account is None:
+        raise HTTPException(status_code=500, detail={"code": "ACCOUNT_CREATE_FAILED"})
+    return AuthSessionResponse(account=_account_summary(account), csrf_token=csrf_token)
+
+
+@app.post("/api/v1/auth/login", response_model=AuthSessionResponse)
+def login_account(payload: AccountLogin, response: Response) -> AuthSessionResponse:
+    account = REPOSITORY.get_account_by_username(payload.username)
+    if account is None or not verify_password(payload.password, account["password_hash"]):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "INVALID_CREDENTIALS", "message": "Username or password is incorrect."},
+        )
+    token, csrf_token = _issue_account_session(account["id"])
+    _set_session_cookie(response, token)
+    return AuthSessionResponse(account=_account_summary(account), csrf_token=csrf_token)
+
+
+@app.get("/api/v1/auth/session", response_model=AuthSessionResponse)
+def read_account_session(request: Request) -> AuthSessionResponse:
+    if not request.state.account_id:
+        return AuthSessionResponse(account=None, csrf_token=None)
+    account = REPOSITORY.get_account(str(request.state.account_id))
+    if account is None:
+        return AuthSessionResponse(account=None, csrf_token=None)
+    return AuthSessionResponse(
+        account=_account_summary(account),
+        csrf_token=request.state.csrf_token,
+    )
+
+
+@app.post("/api/v1/auth/logout", status_code=204)
+def logout_account(request: Request, response: Response) -> None:
+    if request.state.session_hash:
+        REPOSITORY.delete_session(request.state.session_hash)
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/api/v1",
+        httponly=True,
+        secure=os.getenv("APP_ENV", "development").lower() == "production",
+        samesite="strict",
+    )
+
+
 @app.post("/api/v1/projects", response_model=Project, status_code=201)
-def create_project(payload: ProjectCreate) -> Project:
+def create_project(payload: ProjectCreate, request: Request) -> Project:
     if all(model.asset_id != payload.base_model_asset_id for model in available_base_models()):
         raise HTTPException(
             status_code=422,
@@ -2341,18 +2996,18 @@ def create_project(payload: ProjectCreate) -> Project:
         target_profile=payload.target_profile,
         base_model_asset_id=payload.base_model_asset_id,
     )
-    REPOSITORY.create(project)
+    REPOSITORY.create(project, str(request.state.account_id))
     return project
 
 
 @app.get("/api/v1/projects", response_model=list[Project])
-def list_projects() -> list[Project]:
-    return REPOSITORY.list()
+def list_projects(request: Request) -> list[Project]:
+    return REPOSITORY.list(str(request.state.account_id))
 
 
 @app.get("/api/v1/projects/summary", response_model=list[ProjectSummary])
-def list_project_summaries() -> list[ProjectSummary]:
-    return REPOSITORY.list_summaries()
+def list_project_summaries(request: Request) -> list[ProjectSummary]:
+    return REPOSITORY.list_summaries(str(request.state.account_id))
 
 
 @app.get("/api/v1/projects/{project_id}", response_model=Project)
@@ -2360,14 +3015,55 @@ def get_project(project_id: UUID) -> Project:
     return get_project_or_404(project_id)
 
 
+def _project_workspace_for_deletion(project_id: UUID) -> Path | None:
+    data_directory = REPOSITORY.path.parent.resolve()
+    projects_directory = data_directory / "blender-projects"
+    if projects_directory.is_symlink():
+        raise ValueError("Blender project directory cannot be a symbolic link.")
+
+    project_directory = projects_directory / str(project_id)
+    if project_directory.is_symlink():
+        raise ValueError("Blender project workspace cannot be a symbolic link.")
+    if not project_directory.exists():
+        return None
+
+    resolved_projects_directory = projects_directory.resolve()
+    resolved_project_directory = project_directory.resolve()
+    if resolved_project_directory.parent != resolved_projects_directory:
+        raise ValueError("Blender project workspace is outside the configured data directory.")
+    return project_directory
+
+
 @app.delete("/api/v1/projects/{project_id}", status_code=204)
-def delete_project(project_id: UUID) -> None:
-    if not REPOSITORY.delete(project_id):
+@project_transaction_guard
+def delete_project(project_id: UUID, request: Request) -> None:
+    project = get_project_or_404(project_id)
+    try:
+        project_workspace = _project_workspace_for_deletion(project_id)
+        for reference in project.references:
+            storage_key = reference.get("storage_key")
+            if not isinstance(storage_key, str):
+                raise ValueError("Project reference is missing a valid storage key.")
+            ASSET_STORE.remove_reference(storage_key)
+        if project_workspace is not None:
+            shutil.rmtree(project_workspace)
+    except (OSError, ValueError) as error:
+        LOGGER.exception("Failed to clean up files for project %s", project_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "PROJECT_CLEANUP_FAILED",
+                "message": "Project files could not be fully removed. Retry project deletion.",
+            },
+        ) from error
+
+    if not REPOSITORY.delete(project_id, str(request.state.account_id)):
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND"})
 
 
 @app.get("/api/v1/projects/{project_id}/preview")
-def read_project_preview(project_id: UUID) -> FileResponse:
+@project_transaction_guard
+def read_project_preview(project_id: UUID, background_tasks: BackgroundTasks) -> FileResponse:
     project = get_project_or_404(project_id)
     supported_asset_ids = set(CC3_MORPH_MANIFESTS)
     if project.mode != "blender" or not any(
@@ -2381,7 +3077,8 @@ def read_project_preview(project_id: UUID) -> FileResponse:
     output_directory = project_root / "output"
     preview_path = output_directory / "preview.glb"
     migration_path = output_directory / "preview-migration.json"
-    if any(path.is_symlink() for path in (project_root, output_directory, preview_path, migration_path)):
+    result_path = output_directory / "result.json"
+    if any(path.is_symlink() for path in (project_root, output_directory, preview_path, migration_path, result_path)):
         raise HTTPException(status_code=404, detail={"code": "PROJECT_PREVIEW_NOT_FOUND"})
     resolved_root = (REPOSITORY.path.parent / "blender-projects").resolve()
     resolved_preview = preview_path.resolve()
@@ -2391,12 +3088,17 @@ def read_project_preview(project_id: UUID) -> FileResponse:
         or resolved_preview.stat().st_size > 256 * 1024 * 1024
     ):
         raise HTTPException(status_code=404, detail={"code": "PROJECT_PREVIEW_NOT_FOUND"})
-    result_path = output_directory / "result.json"
     if not _has_current_preview_marker(result_path) and not _has_preview_migration_fallback(migration_path):
         with PREVIEW_MIGRATION_LOCK:
             if not _has_current_preview_marker(result_path) and not _has_preview_migration_fallback(migration_path):
                 try:
-                    run_blender_operation(
+                    migration_transaction_id = uuid4()
+                    migration_attempt_id = uuid4()
+                    migration_staging = (
+                        REPOSITORY.path.parent / "transactions"
+                        / str(migration_transaction_id) / str(migration_attempt_id)
+                    )
+                    migration_result = run_blender_operation(
                         data_directory=REPOSITORY.path.parent,
                         project_id=project_id,
                         operation_id=uuid4(),
@@ -2405,12 +3107,36 @@ def read_project_preview(project_id: UUID) -> FileResponse:
                         arguments={},
                         scope_component_ids=[],
                         dependency_component_ids=[],
+                        transaction_id=migration_transaction_id,
+                        attempt_id=migration_attempt_id,
+                        staging_directory=migration_staging,
                     )
                 except BlenderAdapterError as error:
                     raise HTTPException(
                         status_code=503,
                         detail={"code": "PREVIEW_MIGRATION_FAILED", "message": str(error)},
                     ) from error
+                staged_preview = migration_staging / "output" / "preview_candidate.glb"
+                staged_result = migration_staging / "output" / "result.json"
+                if (
+                    migration_result.get("preview_export_status") != "pass"
+                    or staged_preview.is_symlink()
+                    or not staged_preview.is_file()
+                    or staged_preview.stat().st_size > MAX_PREVIEW_BYTES
+                    or staged_preview.stat().st_dev != output_directory.stat().st_dev
+                ):
+                    raise HTTPException(
+                        status_code=502,
+                        detail={"code": "PREVIEW_MIGRATION_FAILED", "message": "Blender did not produce a valid character preview."},
+                    )
+                fsync_file(staged_preview)
+                os.replace(staged_preview, preview_path)
+                fsync_directory(output_directory)
+                staged_result_copy = output_directory / f".result.{migration_transaction_id}.tmp"
+                shutil.copy2(staged_result, staged_result_copy)
+                fsync_file(staged_result_copy)
+                os.replace(staged_result_copy, result_path)
+                fsync_directory(output_directory)
                 if not _has_current_preview_marker(result_path):
                     if _has_morph_preview_marker(result_path):
                         _write_preview_migration_fallback(migration_path)
@@ -2419,14 +3145,29 @@ def read_project_preview(project_id: UUID) -> FileResponse:
                             status_code=502,
                             detail={"code": "PREVIEW_MIGRATION_FAILED", "message": "Blender did not produce a valid character preview."},
                         )
+                _cleanup_morph_preview_workspace(migration_staging)
+    snapshot_root = Path(tempfile.mkdtemp(prefix=".project-preview-", dir=REPOSITORY.path.parent))
+    snapshot_path = snapshot_root / "preview.glb"
+    try:
+        shutil.copyfile(resolved_preview, snapshot_path)
+        fsync_file(snapshot_path)
+    except OSError as error:
+        _cleanup_morph_preview_workspace(snapshot_root)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "PROJECT_PREVIEW_UNAVAILABLE", "message": "A stable project preview could not be created."},
+        ) from error
+    background_tasks.add_task(_cleanup_morph_preview_workspace, snapshot_root)
     return FileResponse(
-        resolved_preview,
+        snapshot_path,
         media_type="model/gltf-binary",
         headers={"Cache-Control": "no-cache"},
+        background=background_tasks,
     )
 
 
 @app.post("/api/v1/projects/{project_id}/morph-preview")
+@project_transaction_guard
 def create_project_morph_preview(
     project_id: UUID,
     payload: MorphPreviewRequest,
@@ -2691,13 +3432,16 @@ def update_project_draft_appearance(
                 status_code=422,
                 detail={"code": "EYE_ASSET_UNAVAILABLE", "message": "Choose an installed, integrity-verified eye asset."},
             )
-    if payload.body_preset_id is not None:
+    if payload.body_preset_id is not None or payload.head_preset_id is not None:
         available_presets = {
             preset["id"] for preset in available_cc5_body_presets()
         }
         if (
             project.base_model_asset_id != "character_cc5_rlcc3plus_all_morphs_v1"
-            or payload.body_preset_id not in available_presets
+            or any(
+                preset_id is not None and preset_id not in available_presets
+                for preset_id in (payload.body_preset_id, payload.head_preset_id)
+            )
         ):
             raise HTTPException(
                 status_code=422,
@@ -2723,6 +3467,7 @@ def update_project_draft_appearance(
     project.draft_appearance = {
         "eye_asset_id": payload.eye_asset_id,
         "body_preset_id": payload.body_preset_id,
+        "head_preset_id": payload.head_preset_id,
         "skin_asset_id": skin_asset_id,
     }
     if "skin_paint_strokes" in payload.model_fields_set:
@@ -2794,9 +3539,12 @@ async def interpret_skin_prompt(
         "You interpret skin appearance requests as a partial update to the provided semantic skin draft. "
         "Return exactly one JSON object with keys patch and explanation. Supported patch fields only: "
         "base.tone (number from 0 to 1), base.undertone (cool, neutral, warm, olive), and "
-        "surface.roughness (number from 0 to 1). Omit every unchanged property. Preserve all properties not "
-        "explicitly affected by the user's request. Do not invent freckles, regional masks, wrinkles, pore maps, "
-        "subsurface controls, textures, or other unsupported effects; explain those limitations instead. "
+        "surface.roughness (number from 0 to 1), and features.freckles.enabled, density, size, strength, "
+        "color, and pattern (natural, light_dusting, dense_center, cheek_clusters, sun_kissed, constellation, mottled). "
+        "Freckles are generated deterministically on the head skin UV map only; there are no "
+        "validated cheek or nose masks, so never claim precise facial-region placement. Omit every unchanged property. Preserve all properties not "
+        "explicitly affected by the user's request. Do not invent regional masks, wrinkles, pore maps, "
+        "subsurface controls, texture generation, or other unsupported effects; explain those limitations instead. "
         "Never claim that the draft was saved or that textures were generated."
     )
     context = json.dumps({
@@ -2805,6 +3553,15 @@ async def interpret_skin_prompt(
             "base.tone": {"minimum": 0, "maximum": 1},
             "base.undertone": ["cool", "neutral", "warm", "olive"],
             "surface.roughness": {"minimum": 0, "maximum": 1},
+            "features.freckles": {
+                "enabled": "boolean",
+                "density": {"minimum": 0, "maximum": 1},
+                "size": {"minimum": 0, "maximum": 1},
+                "strength": {"minimum": 0, "maximum": 1},
+                "color": "six-digit hex color",
+                "pattern": ["natural", "light_dusting", "dense_center", "cheek_clusters", "sun_kissed", "constellation", "mottled"],
+                "location": "head skin UV map; cheek/nose masks unavailable",
+            },
         },
         "selected_skin": {"id": skin_asset["id"], "name": skin_asset["name"]},
     })
@@ -2841,12 +3598,23 @@ async def interpret_skin_prompt(
             status_code=502,
             detail={"code": "INVALID_SKIN_INTERPRETATION", "message": "Copilot returned an invalid skin update. No draft changes were saved."},
         ) from error
-    changes = [
-        f"{section_name}.{property_name}"
-        for section_name, section in patch
-        if section is not None
-        for property_name in section.model_fields_set
-    ]
+    changes = []
+    for section_name, section in patch:
+        if section is None:
+            continue
+        if section_name == "features":
+            changes.extend(
+                f"features.{feature_name}.{property_name}"
+                for feature_name, feature in section
+                if feature is not None
+                for property_name in feature.model_fields_set
+            )
+        else:
+            changes.extend(
+                f"{section_name}.{property_name}"
+                for property_name in section.model_fields_set
+            )
+    changes.sort()
     return SkinInterpretationResponse(
         patch=patch,
         preview=preview,
@@ -3597,8 +4365,107 @@ def list_modeling_operations(project_id: UUID) -> list[ModelingOperation]:
 
 @app.post("/api/v1/projects/{project_id}/modeling-tools", response_model=ModelingToolResponse)
 def call_modeling_tool(project_id: UUID, payload: ModelingToolRequest) -> ModelingToolResponse:
-    project = get_project_or_404(project_id)
-    return execute_modeling_tool(project, payload)
+    data_directory = REPOSITORY.path.parent
+    try:
+        with hold_project_lock(data_directory, project_id):
+            recover_project_transactions(project_id)
+            project = get_project_or_404(project_id)
+            serialized_request = json.dumps(
+                payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+            )
+            request_hash = hashlib.sha256(serialized_request.encode("utf-8")).hexdigest()
+            existing = next(
+                (
+                    operation for operation in project.operations
+                    if operation.get("operation_id") == str(payload.operation_id)
+                ),
+                None,
+            )
+            if existing is not None:
+                if existing.get("request_hash") != request_hash:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "OPERATION_ID_REUSED", "message": "Use a new operation ID for different tool arguments."},
+                    )
+                return {"operation": existing, "project": project}
+
+            stored_operation = REPOSITORY.get_modeling_operation(project_id, str(payload.operation_id))
+            if stored_operation is not None and stored_operation["request_hash"] != request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "OPERATION_ID_REUSED", "message": "Use a new operation ID for different tool arguments."},
+                )
+            if stored_operation is not None and stored_operation["status"] == "committed":
+                return {
+                    "operation": json.loads(stored_operation["result_json"]),
+                    "project": project,
+                }
+            if project.mode != "blender":
+                return execute_modeling_tool(project, payload)
+
+            transaction_id = uuid4()
+            attempt_id = uuid4()
+            allocated_component_id = None
+            if payload.tool_name == "import_base_model":
+                allocated_component_id = (
+                    stored_operation["allocated_component_id"]
+                    if stored_operation is not None
+                    else str(uuid4())
+                )
+            transactions_directory = data_directory / "transactions"
+            staging_path = transactions_directory / str(transaction_id) / str(attempt_id)
+            backup_path = transactions_directory / str(transaction_id) / "backup"
+            try:
+                transaction = REPOSITORY.prepare_modeling_transaction(
+                    project=project,
+                    operation_id=str(payload.operation_id),
+                    request_hash=request_hash,
+                    transaction_id=str(transaction_id),
+                    attempt_id=str(attempt_id),
+                    api_contract_version=API_TRANSACTION_CONTRACT_VERSION,
+                    worker_contract_version=STAGED_WORKER_CONTRACT_VERSION,
+                    allocated_component_id=allocated_component_id,
+                    staging_path=str(staging_path),
+                    backup_path=str(backup_path),
+                    target_scene_version=project.scene_version + 1,
+                )
+                transaction["allocated_component_id"] = allocated_component_id
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": str(error), "message": "The project has an unresolved or conflicting modeling operation."},
+                ) from error
+
+            try:
+                result = execute_modeling_tool(project, payload, transaction)
+                _commit_modeling_operation(project, result["operation"], transaction)
+                return result
+            except Exception:
+                current = REPOSITORY.get_modeling_transaction(str(transaction_id))
+                if current is not None and current["state"] not in {"COMMITTED", "ROLLED_BACK", "BLOCKED"}:
+                    try:
+                        recover_project_transactions(project_id)
+                    except Exception as recovery_error:
+                        LOGGER.exception("Transaction recovery failed for project %s", project_id)
+                        raise HTTPException(
+                            status_code=503,
+                            detail={
+                                "code": "PROJECT_TRANSACTION_BLOCKED",
+                                "message": "The modeling transaction could not be safely recovered.",
+                            },
+                        ) from recovery_error
+                raise
+    except ProjectLockTimeout as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "PROJECT_BUSY", "message": str(error)},
+            headers={"Retry-After": "1"},
+        ) from error
+    except ProjectLockError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "PROJECT_TRANSACTION_BLOCKED", "message": str(error)},
+        ) from error
 
 
 @app.get("/api/v1/projects/{project_id}/checkpoints", response_model=list[dict[str, Any]])
@@ -3608,6 +4475,7 @@ def list_checkpoints(project_id: UUID) -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/projects/{project_id}/checkpoints/{checkpoint_id}/restore", response_model=Project)
+@project_transaction_guard
 def restore_checkpoint(project_id: UUID, checkpoint_id: str) -> Project:
     project = get_project_or_404(project_id)
     checkpoint = next((item for item in project.checkpoints if item.get("id") == checkpoint_id), None)
@@ -3616,13 +4484,38 @@ def restore_checkpoint(project_id: UUID, checkpoint_id: str) -> Project:
 
     snapshot = checkpoint.get("snapshot", {})
     previous_scene_version = project.scene_version
-    save_checkpoint(project, "before-restore")
     if project.mode == "blender":
+        operation_id = uuid4()
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {"operation": "restore_checkpoint", "checkpoint_id": checkpoint_id},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        transaction_id = uuid4()
+        attempt_id = uuid4()
+        transactions_directory = REPOSITORY.path.parent / "transactions"
+        transaction = REPOSITORY.prepare_modeling_transaction(
+            project=project,
+            operation_id=str(operation_id),
+            request_hash=request_hash,
+            transaction_id=str(transaction_id),
+            attempt_id=str(attempt_id),
+            api_contract_version=API_TRANSACTION_CONTRACT_VERSION,
+            worker_contract_version=STAGED_WORKER_CONTRACT_VERSION,
+            allocated_component_id=None,
+            staging_path=str(transactions_directory / str(transaction_id) / str(attempt_id)),
+            backup_path=str(transactions_directory / str(transaction_id) / "backup"),
+            target_scene_version=previous_scene_version + 1,
+        )
+        save_checkpoint(project, "before-restore")
         try:
-            blender_restore = run_blender_operation(
+            blender_restore = _run_modeling_worker(
+                transaction,
                 data_directory=REPOSITORY.path.parent,
                 project_id=project.id,
-                operation_id=uuid4(),
+                operation_id=operation_id,
                 expected_scene_version=previous_scene_version,
                 operation="restore_checkpoint",
                 arguments={"checkpoint_scene_version": int(snapshot.get("scene_version", 0))},
@@ -3630,6 +4523,7 @@ def restore_checkpoint(project_id: UUID, checkpoint_id: str) -> Project:
                 dependency_component_ids=[],
             )
         except (BlenderAdapterError, ValueError) as error:
+            recover_project_transactions(project_id)
             raise HTTPException(
                 status_code=503,
                 detail={"code": "BLENDER_RESTORE_FAILED", "message": str(error)},
@@ -3644,7 +4538,22 @@ def restore_checkpoint(project_id: UUID, checkpoint_id: str) -> Project:
     for component in project.components:
         component["scene_version"] = project.scene_version
     project.updated_at = datetime.now(timezone.utc)
-    REPOSITORY.save(project)
+    if project.mode == "blender":
+        restore_operation = {
+            "operation_id": str(operation_id),
+            "tool_name": "restore_checkpoint",
+            "request_hash": request_hash,
+            "scene_version": project.scene_version,
+            "checkpoint_id": checkpoint_id,
+        }
+        try:
+            _commit_modeling_operation(project, restore_operation, transaction)
+        except Exception:
+            recover_project_transactions(project_id)
+            raise
+    else:
+        save_checkpoint(project, "before-restore")
+        REPOSITORY.save(project)
     return project
 
 
@@ -3658,3 +4567,47 @@ def export_project(project_id: UUID) -> dict[str, Any]:
         "target_profile": project.target_profile,
         "scene_version": project.scene_version,
     }
+
+
+def _account_aware_openapi() -> dict[str, Any]:
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    schemes["SessionCookie"] = {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": SESSION_COOKIE_NAME,
+    }
+    for path, path_item in schema.get("paths", {}).items():
+        is_project_route = path == "/api/v1/projects" or path.startswith("/api/v1/projects/")
+        is_session_route = path == "/api/v1/auth/session"
+        is_logout_route = path == "/api/v1/auth/logout"
+        if not (is_project_route or is_session_route or is_logout_route):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "patch", "delete"}:
+                continue
+            operation["security"] = (
+                [{"SessionCookie": []}, {}] if is_session_route else [{"SessionCookie": []}]
+            )
+            if (is_project_route or is_logout_route) and method in {"post", "patch", "delete"}:
+                parameters = operation.setdefault("parameters", [])
+                if not any(
+                    parameter.get("name") == "X-CSRF-Token"
+                    and parameter.get("in") == "header"
+                    for parameter in parameters
+                ):
+                    parameters.append(
+                        {
+                            "name": "X-CSRF-Token",
+                            "in": "header",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    )
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _account_aware_openapi

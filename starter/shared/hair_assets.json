@@ -1,0 +1,32 @@
+{
+  "assets": [
+    {
+      "id": "hair_cc3plus_female_shoulder_length_v1",
+      "name": "Shoulder-length hair",
+      "category": "hair",
+      "compatible_asset_ids": [
+        "character_cc5_rlcc3plus_all_morphs_v1"
+      ],
+      "source_archive_sha256": "a6c04b3851b01dcc41876eb6261b55b305b4fbac31cf2a000d81c1f1be9d2a2d",
+      "generated_path": "starter/worker/blender/assets/hair/female_base_hair_01.glb",
+      "generated_sha256": "f45decd460d6ce5a02fceb5727bd86ce7d45be3296d64bec54249f6ca2e7e9b7",
+      "preview_path": "starter/worker/blender/assets/hair/female_base_hair_01.preview.glb",
+      "preview_sha256": "6ef871ddf0a7732dbd9fb8b1d1a02269e54e31f5a47eb1b82cedc2d9b6dfd694",
+      "mesh_name": "Shoulder_length_hair",
+      "source_mesh_vertex_count": 25044,
+      "source_mesh_polygon_count": 18862,
+      "mesh_vertex_count": 41367,
+      "mesh_polygon_count": 34802,
+      "armature_name": "CC3_Base_Plus",
+      "bone_count": 101,
+      "object_count": 2,
+      "normalization_scale": 1.006413749858082,
+      "normalization_translation": [
+        1.199738714300717e-07,
+        0.02538485825061798,
+        9.120378914910059e-05
+      ],
+      "attachment_status": "attachable"
+    }
+  ]
+}

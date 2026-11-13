@@ -7,10 +7,12 @@ Run using: blender --background --python worker_entry.py -- --job /path/to/job.j
 from __future__ import annotations
 
 import argparse
+from array import array
 import hashlib
 import json
 import math
 import os
+import random
 import re
 import shutil
 import struct
@@ -18,6 +20,10 @@ import sys
 import tempfile
 from pathlib import Path
 from uuid import UUID
+
+API_TRANSACTION_CONTRACT_VERSION = "transaction-v1"
+WORKER_CONTRACT_VERSION = "worker-staged-v1"
+SUPPORTED_API_CONTRACT_VERSIONS = {API_TRANSACTION_CONTRACT_VERSION}
 
 ALLOWED_OPERATIONS = {
     "import_base_model",
@@ -140,10 +146,24 @@ def parse_args() -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--job", required=True, help="Path to API-created validated job JSON")
+    parser.add_argument("--staged-only", action="store_true")
     return parser.parse_args(argv)
 
 
-def load_job(job_path: Path) -> dict:
+def validate_cc5_preset_ids(value: object) -> dict[str, str | None]:
+    if not isinstance(value, dict) or set(value) != {"body", "head"}:
+        raise ValueError("preset_ids must contain body and head selections")
+    for kind, preset_id in value.items():
+        if preset_id is not None and (
+            not isinstance(preset_id, str)
+            or preset_id not in CC5_BODY_PRESETS
+            or CC5_BODY_PRESETS[preset_id].get("kind") != kind
+        ):
+            raise ValueError(f"{kind} preset is not an available CC5 character preset")
+    return value
+
+
+def load_job(job_path: Path, staged_only: bool = False) -> dict:
     if job_path.is_symlink():
         raise ValueError("Job file cannot be a symbolic link")
     job_path = job_path.resolve()
@@ -165,9 +185,23 @@ def load_job(job_path: Path) -> dict:
         "dependency_component_ids",
         "arguments",
     }
+    if staged_only:
+        required_keys.update({
+            "transaction_id", "attempt_id", "api_contract_version", "worker_contract_version",
+        })
     if set(data) != required_keys:
         raise ValueError("Job payload contains missing or unsupported fields")
-    for key in ("job_id", "project_id", "operation_id"):
+    if staged_only and (
+        not isinstance(data["api_contract_version"], str)
+        or data["api_contract_version"] not in SUPPORTED_API_CONTRACT_VERSIONS
+        or not isinstance(data["worker_contract_version"], str)
+        or data["worker_contract_version"] != WORKER_CONTRACT_VERSION
+    ):
+        raise ValueError("Job payload uses an unsupported transaction worker contract version")
+    id_keys = ["job_id", "project_id", "operation_id"]
+    if staged_only:
+        id_keys.extend(("transaction_id", "attempt_id"))
+    for key in id_keys:
         try:
             UUID(data[key])
         except (ValueError, TypeError, AttributeError) as exc:
@@ -195,7 +229,9 @@ def load_job(job_path: Path) -> dict:
     allowed_arguments = {
         "import_base_model": set(),
         "apply_cc3_morph_controls": {"component_id", "asset_id", "morphs"},
-        "apply_cc3_body_preset": {"component_id", "asset_id", "morphs", "preset_id"},
+        "apply_cc3_body_preset": {
+            "component_id", "asset_id", "morphs", "preset_id", "preset_ids",
+        },
         "preview_cc3_morph_controls": {"component_id", "asset_id", "morphs"},
         "bake_cc3_morph_controls": {"component_id", "asset_id", "morphs"},
         "restore_checkpoint": {"checkpoint_scene_version"},
@@ -203,13 +239,26 @@ def load_job(job_path: Path) -> dict:
     }[operation]
     if operation == "import_base_model":
         allowed_import_fields = {
-            "component_id", "asset_id", "morphs", "preset_id",
+            "component_id", "asset_id", "morphs", "preset_id", "preset_ids",
             "eye_attachment", "skin_asset_id", "skin_paint_strokes", "skin_definition",
         }
         if (
             not {"component_id", "asset_id"} <= set(arguments)
             or set(arguments) - allowed_import_fields
+            or {"preset_id", "preset_ids"} <= set(arguments)
         ):
+            raise ValueError("Operation arguments contain missing or unsupported fields")
+        if "preset_ids" in arguments:
+            if arguments["asset_id"] != "character_cc5_rlcc3plus_all_morphs_v1":
+                raise ValueError("Character presets require the CC5/CC3+ source model")
+            validate_cc5_preset_ids(arguments["preset_ids"])
+    elif operation == "apply_cc3_body_preset":
+        required_preset_fields = {"component_id", "asset_id", "morphs"}
+        valid_preset_fields = (
+            required_preset_fields | {"preset_id"},
+            required_preset_fields | {"preset_ids"},
+        )
+        if set(arguments) not in valid_preset_fields:
             raise ValueError("Operation arguments contain missing or unsupported fields")
     elif set(arguments) != allowed_arguments:
         raise ValueError("Operation arguments contain missing or unsupported fields")
@@ -228,6 +277,8 @@ def load_job(job_path: Path) -> dict:
             or arguments["asset_id"] != "character_cc5_rlcc3plus_all_morphs_v1"
             or preset_id not in CC5_BODY_PRESETS
         ):
+            raise ValueError("preset_id is not an available CC5 character preset")
+        if preset_id is not None and CC5_BODY_PRESETS[preset_id].get("kind") not in {"body", "head"}:
             raise ValueError("preset_id is not an available CC5 character preset")
         eye_attachment = arguments.get("eye_attachment")
         if eye_attachment is not None and (
@@ -266,20 +317,29 @@ def load_job(job_path: Path) -> dict:
         asset_id = arguments["asset_id"]
         if asset_id not in CC3_ASSET:
             raise ValueError("asset_id is not an allowlisted source asset")
-        if scope_ids != [component_id] or dependency_ids:
-            raise ValueError("CC3 morph controls must scope only their body component")
+        if (
+            scope_ids != [component_id]
+            or dependency_ids
+        ):
+            raise ValueError("CC3 morph controls must scope only their character component")
         morphs = _validate_morph_map(asset_id, arguments["morphs"])
         if operation == "bake_cc3_morph_controls" and not any(morphs.values()):
             raise ValueError("At least one non-neutral morph value is required to bake the character")
-        if operation == "apply_cc3_body_preset" and (
-            asset_id != "character_cc5_rlcc3plus_all_morphs_v1"
-            or arguments["preset_id"] is not None
-            and (
-                not isinstance(arguments["preset_id"], str)
-                or arguments["preset_id"] not in CC5_BODY_PRESETS
-            )
-        ):
-            raise ValueError("Character presets require an allowlisted CC5/CC3+ preset")
+        if operation == "apply_cc3_body_preset":
+            if asset_id != "character_cc5_rlcc3plus_all_morphs_v1":
+                raise ValueError("Character presets require an allowlisted CC5/CC3+ preset")
+            preset_fields = set(arguments) - {"component_id", "asset_id", "morphs"}
+            if preset_fields == {"preset_ids"}:
+                validate_cc5_preset_ids(arguments["preset_ids"])
+            elif preset_fields == {"preset_id"}:
+                preset_id = arguments["preset_id"]
+                if preset_id is not None and (
+                    not isinstance(preset_id, str)
+                    or preset_id not in CC5_BODY_PRESETS
+                ):
+                    raise ValueError("preset_id is not an available CC5 character preset")
+            else:
+                raise ValueError("Operation arguments contain missing or unsupported fields")
     elif operation == "restore_checkpoint":
         checkpoint_version = arguments["checkpoint_scene_version"]
         if isinstance(checkpoint_version, bool) or not isinstance(checkpoint_version, int) or checkpoint_version < 0:
@@ -474,7 +534,7 @@ def apply_cc3_morph_controls(bpy, args: dict) -> dict:
         separators=(",", ":"),
     )
     bpy.context.view_layer.update()
-    return {
+    result = {
         "component_id": component_id,
         "morphs": {name: float(values[name]) for name in controls},
         "shape_key_count": len(body.data.shape_keys.key_blocks) - 1,
@@ -484,9 +544,15 @@ def apply_cc3_morph_controls(bpy, args: dict) -> dict:
             if mesh.data.shape_keys is not None
         ),
     }
+    return result
 
 
-def apply_cc3_body_preset(bpy, args: dict) -> dict:
+def _apply_cc3_single_preset(
+    bpy,
+    args: dict,
+    *,
+    preset_kind: str,
+) -> dict:
     component_id = safe_component_id(args["component_id"])
     asset_id = args["asset_id"]
     if asset_id != "character_cc5_rlcc3plus_all_morphs_v1":
@@ -521,7 +587,25 @@ def apply_cc3_body_preset(bpy, args: dict) -> dict:
         raise ValueError("SCOPE_VIOLATION: CC5 accessory meshes do not match the pinned character")
 
     preset_id = args["preset_id"]
-    current_preset_id = body.get("comodel_cc5_body_preset")
+    preset_ids_json = body.get("comodel_cc5_preset_ids")
+    if preset_ids_json is None:
+        legacy_preset_id = body.get("comodel_cc5_body_preset")
+        current_preset_ids = {}
+        if legacy_preset_id in CC5_BODY_PRESETS:
+            current_preset_ids[CC5_BODY_PRESETS[legacy_preset_id]["kind"]] = legacy_preset_id
+    else:
+        current_preset_ids = json.loads(preset_ids_json)
+        if (
+            not isinstance(current_preset_ids, dict)
+            or any(kind not in {"body", "head"} for kind in current_preset_ids)
+            or any(
+                selected_id not in CC5_BODY_PRESETS
+                or CC5_BODY_PRESETS[selected_id].get("kind") != kind
+                for kind, selected_id in current_preset_ids.items()
+            )
+        ):
+            raise ValueError("The scene contains invalid CC5 preset metadata")
+    current_preset_id = current_preset_ids.get(preset_kind)
     current_key_name = (
         f"CoModel_Preset_{current_preset_id}"
         if current_preset_id
@@ -536,11 +620,13 @@ def apply_cc3_body_preset(bpy, args: dict) -> dict:
             )
             if accessory_key is not None:
                 mesh.shape_key_remove(accessory_key)
-        body.pop("comodel_cc5_body_preset", None)
+        current_preset_ids.pop(preset_kind, None)
     else:
         preset = CC5_BODY_PRESETS.get(preset_id)
         if preset is None:
             raise ValueError("preset_id is not an available CC5 character preset")
+        if preset.get("kind") != preset_kind:
+            raise ValueError("preset_id does not match the requested character preset kind")
         preset_key_name = f"CoModel_Preset_{preset_id}"
         for mesh in [body, *accessory_meshes]:
             old_key = (
@@ -660,16 +746,27 @@ def apply_cc3_body_preset(bpy, args: dict) -> dict:
                     )
                     destination.co += body_to_accessory @ body_delta
                 accessory_names.append(accessory.get("comodel_source_group", accessory.name))
-            body["comodel_cc5_body_preset"] = preset_id
+            current_preset_ids[preset_kind] = preset_id
         finally:
             for obj in set(bpy.data.objects) - objects_before_import:
                 bpy.data.objects.remove(obj, do_unlink=True)
 
+    if current_preset_ids:
+        body["comodel_cc5_preset_ids"] = json.dumps(current_preset_ids, sort_keys=True)
+    else:
+        body.pop("comodel_cc5_preset_ids", None)
+    for kind in ("body", "head"):
+        property_name = f"comodel_cc5_{kind}_preset"
+        selected_id = current_preset_ids.get(kind)
+        if selected_id is None:
+            body.pop(property_name, None)
+        else:
+            body[property_name] = selected_id
     bpy.context.view_layer.update()
     preset_following_mesh_names = (
         accessory_names if preset_id is not None else []
     )
-    return {
+    result = {
         "component_id": component_id,
         "preset_id": preset_id,
         "preset_mesh_name": preset["mesh_name"] if preset_id is not None else None,
@@ -684,6 +781,50 @@ def apply_cc3_body_preset(bpy, args: dict) -> dict:
             and obj.data.shape_keys is not None
         ),
     }
+    return result
+
+
+def apply_cc3_body_preset(bpy, args: dict) -> dict:
+    if "preset_ids" in args:
+        preset_ids = validate_cc5_preset_ids(args["preset_ids"])
+    elif args.get("preset_id") is not None:
+        preset_id = args["preset_id"]
+        preset = CC5_BODY_PRESETS.get(preset_id)
+        if preset is None:
+            raise ValueError("preset_id is not an available CC5 character preset")
+        preset_ids = {"body": None, "head": None}
+        preset_ids[preset["kind"]] = preset_id
+    else:
+        preset_ids = {"body": None, "head": None}
+
+    results = [
+        _apply_cc3_single_preset(
+            bpy,
+            {
+                **args,
+                "preset_id": preset_ids[kind],
+            },
+            preset_kind=kind,
+        )
+        for kind in ("body", "head")
+    ]
+    result = results[-1]
+    result["preset_ids"] = preset_ids
+    result["preset_id"] = args.get("preset_id")
+    result["preset_mesh_name"] = (
+        "CC_Base_Body" if any(preset_ids.values()) else None
+    )
+    result["preset_following_mesh_names"] = (
+        next(
+            (
+                item["preset_following_mesh_names"]
+                for item in results
+                if item["preset_id"] is not None
+            ),
+            [],
+        )
+    )
+    return result
 
 
 def bake_cc3_morph_controls(bpy, args: dict) -> dict:
@@ -756,7 +897,7 @@ def bake_cc3_morph_controls(bpy, args: dict) -> dict:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return {
+    result = {
         "component_id": applied["component_id"],
         "baked_morphs": applied["morphs"],
         "shape_key_count": 0,
@@ -764,6 +905,7 @@ def bake_cc3_morph_controls(bpy, args: dict) -> dict:
         "baked_component_vertex_count": sum(len(mesh.data.vertices) for mesh in target_meshes),
         "component_shape_key_count": 0,
     }
+    return result
 
 
 
@@ -822,7 +964,7 @@ def validate_skin_paint_strokes(strokes: object, skin_asset_id: object) -> list[
             raise ValueError("skin paint stroke contains unsupported fields")
         if (
             stroke["material"] not in valid_materials
-            or stroke["tool"] not in {"paint", "erase"}
+            or stroke["tool"] not in {"paint", "freckles", "erase"}
             or not isinstance(stroke["color"], str)
             or not re.fullmatch(r"#[0-9A-Fa-f]{6}", stroke["color"])
             or isinstance(stroke["radius"], bool)
@@ -841,7 +983,7 @@ def validate_skin_paint_strokes(strokes: object, skin_asset_id: object) -> list[
         for point in stroke["points"]:
             if (
                 not isinstance(point, dict)
-                or set(point) != {"u", "v"}
+                or set(point) not in ({"u", "v"}, {"u", "v", "pressure"})
                 or any(
                     isinstance(point[axis], bool)
                     or not isinstance(point[axis], (int, float))
@@ -851,28 +993,75 @@ def validate_skin_paint_strokes(strokes: object, skin_asset_id: object) -> list[
                 )
             ):
                 raise ValueError("skin paint UV coordinates must be finite values from 0 to 1")
+            pressure = point.get("pressure", 1)
+            if (
+                isinstance(pressure, bool)
+                or not isinstance(pressure, (int, float))
+                or not math.isfinite(pressure)
+                or not 0.05 <= pressure <= 1
+            ):
+                raise ValueError("skin paint pressure must be a finite value from 0.05 to 1")
     if total_points > 20_000:
         raise ValueError("skin paint strokes exceed the supported point limit")
     return strokes
 
 
 def validate_skin_definition(definition: object) -> dict:
-    if not isinstance(definition, dict) or set(definition) != {"version", "base", "surface"}:
+    if isinstance(definition, dict):
+        features = definition.get("features")
+        if isinstance(features, dict) and isinstance(features.get("freckles"), dict):
+            freckles = dict(features["freckles"])
+            freckles.setdefault("pattern", "natural")
+            definition = {
+                **definition,
+                "features": {
+                    **features,
+                    "freckles": freckles,
+                },
+            }
+    if not isinstance(definition, dict) or set(definition) != {"version", "base", "surface", "features"}:
         raise ValueError("skin_definition contains missing or unsupported fields")
     base = definition["base"]
     surface = definition["surface"]
+    features = definition["features"]
+    freckles = features.get("freckles") if isinstance(features, dict) else None
     if (
-        definition["version"] != 1
+        definition["version"] != 2
         or isinstance(definition["version"], bool)
         or not isinstance(base, dict)
         or set(base) != {"tone", "undertone"}
         or not isinstance(surface, dict)
         or set(surface) != {"roughness"}
+        or not isinstance(features, dict)
+        or set(features) != {"freckles"}
+        or not isinstance(freckles, dict)
+        or set(freckles) != {"enabled", "density", "size", "strength", "color", "seed", "pattern"}
         or not isinstance(base.get("undertone"), str)
         or base["undertone"] not in {"cool", "neutral", "warm", "olive"}
+        or not isinstance(freckles.get("enabled"), bool)
+        or not isinstance(freckles.get("color"), str)
+        or re.fullmatch(r"#[0-9A-Fa-f]{6}", freckles["color"]) is None
+        or freckles.get("pattern") not in {
+            "natural",
+            "light_dusting",
+            "dense_center",
+            "cheek_clusters",
+            "sun_kissed",
+            "constellation",
+            "mottled",
+        }
+        or isinstance(freckles.get("seed"), bool)
+        or not isinstance(freckles.get("seed"), int)
+        or not 0 <= freckles["seed"] <= 0xFFFFFFFF
     ):
         raise ValueError("skin_definition contains unsupported skin properties")
-    for section, key in ((base, "tone"), (surface, "roughness")):
+    for section, key in (
+        (base, "tone"),
+        (surface, "roughness"),
+        (freckles, "density"),
+        (freckles, "size"),
+        (freckles, "strength"),
+    ):
         value = section[key]
         if (
             isinstance(value, bool)
@@ -897,6 +1086,176 @@ def skin_material_parameters(definition: dict) -> dict:
         "color_multiplier": [round(tone_factor * channel, 6) for channel in undertone],
         "roughness_scale": round(definition["surface"]["roughness"] / 0.42, 6),
     }
+
+
+def generate_skin_freckle_spots(freckles: dict, width: int, height: int) -> list[tuple[float, float, float, float]]:
+    freckles = {
+        **freckles,
+        "pattern": freckles.get("pattern", "natural"),
+    }
+    validate_skin_definition({
+        "version": 2,
+        "base": {"tone": 0.62, "undertone": "neutral"},
+        "surface": {"roughness": 0.42},
+        "features": {"freckles": freckles},
+    })
+    if not freckles["enabled"] or freckles["density"] <= 0 or width < 1 or height < 1:
+        return []
+
+    state = freckles["seed"]
+
+    def random_value() -> float:
+        nonlocal state
+        state ^= (state << 13) & 0xFFFFFFFF
+        state ^= state >> 17
+        state ^= (state << 5) & 0xFFFFFFFF
+        state &= 0xFFFFFFFF
+        return state / 0x1_0000_0000
+
+    minimum_dimension = min(width, height)
+    count = math.floor(freckles["density"] * 800 + 0.5)
+    spots = []
+    pattern = freckles["pattern"]
+    for _ in range(count):
+        x = random_value()
+        y = random_value()
+        if pattern == "light_dusting":
+            x = 0.16 + random_value() * 0.68
+            y = 0.18 + random_value() * 0.64
+        elif pattern == "dense_center":
+            x = min(0.98, max(0.02, 0.5 + (random_value() - 0.5) * 0.38))
+            y = min(0.98, max(0.02, 0.5 + (random_value() - 0.5) * 0.48))
+        elif pattern == "cheek_clusters":
+            cluster = -1 if random_value() < 0.5 else 1
+            x = 0.5 + cluster * (0.18 + random_value() * 0.13) + (random_value() - 0.5) * 0.08
+            y = 0.42 + random_value() * 0.34
+        elif pattern == "sun_kissed":
+            x = 0.5 + (random_value() - 0.5) * 0.78
+            y = 0.72 - random_value() * 0.48
+        elif pattern == "constellation":
+            cluster_index = math.floor(random_value() * 6)
+            angle = random_value() * math.pi * 2
+            distance = random_value() * 0.12
+            x = 0.22 + (cluster_index % 3) * 0.28 + math.cos(angle) * distance
+            y = 0.32 + math.floor(cluster_index / 3) * 0.24 + math.sin(angle) * distance
+        elif pattern == "mottled":
+            x = random_value() * 0.55 if random_value() < 0.5 else 0.45 + random_value() * 0.55
+            y = random_value() * 0.82 + 0.08
+        spots.append((
+            min(0.999, max(0, x)) * width,
+            min(0.999, max(0, y)) * height,
+            minimum_dimension
+            * (0.00055 + freckles["size"] * 0.00115)
+            * (0.6 + random_value() * 0.8),
+            freckles["strength"] * 0.35 * (0.6 + random_value() * 0.8),
+        ))
+    return spots
+
+
+def apply_skin_freckles(bpy, freckles: dict) -> int:
+    if not freckles["enabled"]:
+        return 0
+    material = bpy.data.materials.get("Std_Skin_Head_CC3PlusFemaleSkin")
+    if material is None or not material.use_nodes or material.node_tree is None:
+        raise ValueError("SKIN_FRECKLE_MATERIAL_UNAVAILABLE: head skin material is missing")
+    shader = next(
+        (node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"),
+        None,
+    )
+    color_input = shader.inputs.get("Base Color") if shader is not None else None
+    image_node = next(
+        (
+            link.from_node
+            for link in color_input.links
+            if link.from_node.type == "TEX_IMAGE" and link.from_node.image is not None
+        ),
+        None,
+    ) if color_input is not None else None
+    if image_node is None:
+        raise ValueError("SKIN_FRECKLE_TEXTURE_UNAVAILABLE: head diffuse image is missing")
+    image = image_node.image.copy()
+    image.name = "Std_Skin_Head_Freckles"
+    image_node.image = image
+    width, height = image.size
+    spots = generate_skin_freckle_spots(freckles, width, height)
+    pixels = array("f", [0.0]) * (width * height * 4)
+    image.pixels.foreach_get(pixels)
+
+    def linear_to_srgb(value: float) -> float:
+        value = min(1.0, max(0.0, value))
+        return value * 12.92 if value <= 0.0031308 else 1.055 * value ** (1 / 2.4) - 0.055
+
+    def srgb_to_linear(value: float) -> float:
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    color = tuple(int(freckles["color"][index:index + 2], 16) / 255 for index in (1, 3, 5))
+    for center_x, center_y, radius, opacity in spots:
+        left = max(0, math.floor(center_x - radius))
+        right = min(width - 1, math.ceil(center_x + radius))
+        top = max(0, math.floor(center_y - radius))
+        bottom = min(height - 1, math.ceil(center_y + radius))
+        for y in range(top, bottom + 1):
+            for x in range(left, right + 1):
+                coverage = min(1.0, max(0.0, radius + 0.5 - math.hypot(x - center_x, y - center_y)))
+                alpha = opacity * coverage
+                if alpha <= 0:
+                    continue
+                offset = (y * width + x) * 4
+                for channel in range(3):
+                    source = linear_to_srgb(pixels[offset + channel])
+                    blended = source * (1 - alpha) + color[channel] * alpha
+                    quantized = math.floor(blended * 255 + 0.5) / 255
+                    pixels[offset + channel] = srgb_to_linear(quantized)
+    image.pixels.foreach_set(pixels)
+    image.update()
+    image.pack()
+    return len(spots)
+
+
+def skin_paint_samples(
+    points: list[dict],
+    width: int,
+    height: int,
+    brush_radius: float,
+) -> list[tuple[float, float, float, float]]:
+    if len(points) == 1:
+        point = points[0]
+        pressure = point.get("pressure", 1)
+        return [(
+            point["u"] * (width - 1),
+            point["v"] * (height - 1),
+            max(0.5, brush_radius * pressure),
+            pressure,
+        )]
+    samples = []
+    for start, end in zip(points, points[1:]):
+        x0, y0 = start["u"] * (width - 1), start["v"] * (height - 1)
+        x1, y1 = end["u"] * (width - 1), end["v"] * (height - 1)
+        pressure0 = start.get("pressure", 1)
+        pressure1 = end.get("pressure", 1)
+        distance = math.hypot(x1 - x0, y1 - y0)
+        count = max(
+            1,
+            math.ceil(distance / max(brush_radius * min(pressure0, pressure1) * 0.4, 1)),
+        )
+        samples.extend(
+            (
+                x0 + (x1 - x0) * step / count,
+                y0 + (y1 - y0) * step / count,
+                max(0.5, brush_radius * (pressure0 + (pressure1 - pressure0) * step / count)),
+                pressure0 + (pressure1 - pressure0) * step / count,
+            )
+            for step in range(count)
+        )
+    last = points[-1]
+    last_pressure = last.get("pressure", 1)
+    samples.append((
+        last["u"] * (width - 1),
+        last["v"] * (height - 1),
+        max(0.5, brush_radius * last_pressure),
+        last_pressure,
+    ))
+    return samples
 
 
 def apply_skin_paint(bpy, strokes: list[dict]) -> dict:
@@ -949,32 +1308,43 @@ def apply_skin_paint(bpy, strokes: list[dict]) -> dict:
                 for index in (1, 3, 5)
             ], dtype=np.float32)
             radius = max(1.0, stroke["radius"] * width)
-            points = stroke["points"]
-            path = []
-            for start, end in zip(points, points[1:]):
-                x0, y0 = start["u"] * (width - 1), start["v"] * (height - 1)
-                x1, y1 = end["u"] * (width - 1), end["v"] * (height - 1)
-                distance = math.hypot(x1 - x0, y1 - y0)
-                count = max(1, math.ceil(distance / max(radius * 0.4, 1)))
-                path.extend(
-                    (
-                        x0 + (x1 - x0) * step / count,
-                        y0 + (y1 - y0) * step / count,
+            path = skin_paint_samples(stroke["points"], width, height, radius)
+            for center_x, center_y, point_radius, pressure in path:
+                if stroke["tool"] == "freckles":
+                    seed = (
+                        int((center_x / max(width, 1) * 10000 + center_y / max(height, 1) * 7777) * 1000)
+                        & 0xFFFFFFFF
                     )
-                    for step in range(count)
-                )
-            if not points or len(points) == 1:
-                path = [(points[0]["u"] * (width - 1), points[0]["v"] * (height - 1))]
-            else:
-                path.append((points[-1]["u"] * (width - 1), points[-1]["v"] * (height - 1)))
-            for center_x, center_y in path:
-                left = max(0, math.floor(center_x - radius))
-                right = min(width, math.ceil(center_x + radius + 1))
-                bottom = max(0, math.floor(center_y - radius))
-                top = min(height, math.ceil(center_y + radius + 1))
+                    def random_value():
+                        nonlocal seed
+                        seed ^= (seed << 13) & 0xFFFFFFFF
+                        seed ^= seed >> 17
+                        seed ^= (seed << 5) & 0xFFFFFFFF
+                        seed &= 0xFFFFFFFF
+                        return seed / 0x1_0000_0000
+                    for _ in range(4 + int(random_value() * 5)):
+                        angle = random_value() * math.pi * 2
+                        distance = math.sqrt(random_value()) * point_radius
+                        mark_x = center_x + math.cos(angle) * distance
+                        mark_y = center_y + math.sin(angle) * distance
+                        mark_radius = max(0.7, point_radius * (0.08 + random_value() * 0.14))
+                        left = max(0, math.floor(mark_x - mark_radius))
+                        right = min(width, math.ceil(mark_x + mark_radius + 1))
+                        bottom = max(0, math.floor(mark_y - mark_radius))
+                        top = min(height, math.ceil(mark_y + mark_radius + 1))
+                        y, x = np.ogrid[bottom:top, left:right]
+                        coverage = np.clip(mark_radius + 0.5 - np.sqrt((x - mark_x) ** 2 + (y - mark_y) ** 2), 0, 1)
+                        alpha = coverage[..., None] * stroke["opacity"] * pressure
+                        region = pixels[bottom:top, left:right, :3]
+                        region[:] = color * alpha + region * (1 - alpha)
+                    continue
+                left = max(0, math.floor(center_x - point_radius))
+                right = min(width, math.ceil(center_x + point_radius + 1))
+                bottom = max(0, math.floor(center_y - point_radius))
+                top = min(height, math.ceil(center_y + point_radius + 1))
                 y, x = np.ogrid[bottom:top, left:right]
-                coverage = np.clip(radius + 0.5 - np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2), 0, 1)
-                alpha = coverage[..., None] * stroke["opacity"]
+                coverage = np.clip(point_radius + 0.5 - np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2), 0, 1)
+                alpha = coverage[..., None] * stroke["opacity"] * pressure
                 region = pixels[bottom:top, left:right, :3]
                 if stroke["tool"] == "erase":
                     base_region = base_pixels[bottom:top, left:right, :3]
@@ -1048,6 +1418,7 @@ def apply_skin_asset(bpy, component_id: str, asset_id: str) -> dict:
 
 def apply_skin_definition(bpy, definition: dict) -> dict:
     parameters = skin_material_parameters(definition)
+    freckle_count = apply_skin_freckles(bpy, definition["features"]["freckles"])
     colors = parameters["color_multiplier"]
     roughness_scale = parameters["roughness_scale"]
     materials = [
@@ -1112,6 +1483,7 @@ def apply_skin_definition(bpy, definition: dict) -> dict:
         "definition": definition,
         "material_parameters": parameters,
         "material_names": sorted(material.name for material in materials),
+        "freckles": {"enabled": definition["features"]["freckles"]["enabled"], "spot_count": freckle_count},
     }
 
 
@@ -1563,14 +1935,22 @@ def import_base_model(bpy, args: dict, *, clear_default_cube: bool) -> dict:
             bpy,
             {"component_id": component_id, "asset_id": asset_id, "morphs": morphs},
         )["morphs"]
-    preset_id = args.get("preset_id")
-    if preset_id is not None:
+    if "preset_ids" in args:
         result["body_preset"] = apply_cc3_body_preset(
             bpy,
             {
                 "component_id": component_id,
                 "asset_id": asset_id,
-                "preset_id": preset_id,
+                "preset_ids": args["preset_ids"],
+            },
+        )
+    elif args.get("preset_id") is not None:
+        result["body_preset"] = apply_cc3_body_preset(
+            bpy,
+            {
+                "component_id": component_id,
+                "asset_id": asset_id,
+                "preset_id": args["preset_id"],
             },
         )
     skin_asset_id = args.get("skin_asset_id")
@@ -1585,9 +1965,17 @@ def import_base_model(bpy, args: dict, *, clear_default_cube: bool) -> dict:
             args.get(
                 "skin_definition",
                 {
-                    "version": 1,
+                    "version": 2,
                     "base": {"tone": 0.62, "undertone": "neutral"},
                     "surface": {"roughness": 0.42},
+                    "features": {"freckles": {
+                        "enabled": False,
+                        "density": 0.18,
+                        "size": 0.45,
+                        "strength": 0.35,
+                        "color": "#80513F",
+                        "seed": 24301,
+                    }},
                 },
             ),
         )
@@ -1605,6 +1993,14 @@ def import_base_model(bpy, args: dict, *, clear_default_cube: bool) -> dict:
                 "component_id": eye_attachment["component_id"],
                 "asset_id": eye_attachment["asset_id"],
             },
+        )
+    if "preset_ids" in args or args.get("preset_id") is not None:
+        result["component_shape_key_count"] = sum(
+            len(obj.data.shape_keys.key_blocks)
+            for obj in bpy.context.scene.objects
+            if obj.type == "MESH"
+            and obj.get("comodel_component_id") == component_id
+            and obj.data.shape_keys is not None
         )
     return result
 
@@ -1718,6 +2114,18 @@ def component_object_fingerprints(
                 for coordinate in vertex.co
             ),
         ) if mesh_data else None
+        curve_geometry = (
+            (
+                tuple(curve.points_length for curve in obj.data.curves),
+                tuple(
+                    round(float(value), 6)
+                    for point in obj.data.attributes["position"].data
+                    for value in point.vector
+                ),
+            )
+            if obj.type == "CURVES" and obj.data.attributes.get("position") is not None
+            else None
+        )
         pose = (
             tuple(
                 (
@@ -1748,7 +2156,14 @@ def component_object_fingerprints(
             for material in obj.data.materials
             if material is not None
         ) if hasattr(obj.data, "materials") else ()
-        fingerprints[object_id] = (component_id, matrix, topology, pose, materials)
+        fingerprints[object_id] = (
+            component_id,
+            matrix,
+            topology,
+            curve_geometry,
+            pose,
+            materials,
+        )
     return fingerprints
 
 
@@ -1766,6 +2181,19 @@ def component_geometry_hash(bpy, component_id: str) -> str:
             if obj.type == "MESH"
             else []
         )
+        curve_points = (
+            [
+                [round(float(value), 6) for value in point.vector]
+                for point in obj.data.attributes["position"].data
+            ]
+            if obj.type == "CURVES" and obj.data.attributes.get("position") is not None
+            else []
+        )
+        curve_sizes = (
+            [curve.points_length for curve in obj.data.curves]
+            if obj.type == "CURVES"
+            else []
+        )
         ear_sculpt = (
             obj.data.shape_keys.key_blocks.get("CoModel_Ear_Sculpt")
             if obj.type == "MESH" and obj.data.shape_keys is not None
@@ -1776,6 +2204,8 @@ def component_geometry_hash(bpy, component_id: str) -> str:
             "name": obj.name,
             "matrix": [[round(float(value), 6) for value in row] for row in obj.matrix_world],
             "vertices": vertices,
+            "curve_points": curve_points,
+            "curve_sizes": curve_sizes,
             "ear_sculpt": (
                 [[round(float(value), 6) for value in vertex.co] for vertex in ear_sculpt.data]
                 if ear_sculpt is not None
@@ -1977,11 +2407,14 @@ def write_failure_report(job_path: Path, error: Exception) -> None:
     atomic_write_json(output_dir / "worker-error.json", report)
 
 
-def main() -> int:
+def main(*, force_staged_only: bool = False) -> int:
     import bpy  # Available only inside Blender's Python runtime.
 
     args = parse_args()
-    job = load_job(Path(args.job))
+    staged_only = force_staged_only or args.staged_only
+    job = load_job(Path(args.job), staged_only=staged_only)
+    if staged_only != ("transaction_id" in job and "attempt_id" in job):
+        raise ValueError("Worker staging mode does not match the transaction job identity")
     root = Path(job["_job_root"]).resolve()
     output_dir = (root / "output").resolve()
     # Ensure all outputs remain under the job workspace.
@@ -2112,7 +2545,7 @@ def main() -> int:
     try:
         result["preview_compression"] = export_gltf_preview(bpy, candidate_preview)
         export_status = "pass"
-    except Exception as exc:  # Keep the authoritative .blend and report preview failure.
+    except Exception as exc:
         result["preview_export_error"] = type(exc).__name__
         export_status = "fail"
 
@@ -2126,26 +2559,43 @@ def main() -> int:
         except OSError:
             shutil.copy2(committed_blend, temporary_scene)
         os.replace(temporary_scene, versioned_scene)
-    if not preview_only:
-        os.replace(candidate_blend, committed_blend)
-    if export_status == "pass" and candidate_preview.is_file():
-        os.replace(candidate_preview, output_dir / "preview.glb")
-    elif candidate_preview.exists():
-        candidate_preview.unlink()
+    if not staged_only:
+        if not preview_only:
+            os.replace(candidate_blend, committed_blend)
+        if export_status == "pass" and candidate_preview.is_file():
+            os.replace(candidate_preview, output_dir / "preview.glb")
+        elif candidate_preview.exists():
+            candidate_preview.unlink()
 
     result_doc = {
         "job_id": job.get("job_id"),
         "project_id": project_id,
         "operation_id": job["operation_id"],
         "operation": operation,
+        **(
+            {
+                "transaction_id": job["transaction_id"],
+                "attempt_id": job["attempt_id"],
+                "api_contract_version": job["api_contract_version"],
+                "worker_contract_version": WORKER_CONTRACT_VERSION,
+            }
+            if staged_only
+            else {}
+        ),
         "status": "completed" if export_status == "pass" else "completed_with_warning",
         "mode": "blender",
         "expected_scene_version": expected_version,
         "scene_version": next_version,
         "scope_component_ids": job["scope_component_ids"],
         "dependency_component_ids": job["dependency_component_ids"],
-        "scene_file": None if preview_only else "output/scene.blend",
-        "preview_file": "output/preview.glb" if export_status == "pass" else None,
+        "scene_file": (
+            None if preview_only else
+            "output/scene_candidate.blend" if staged_only else "output/scene.blend"
+        ),
+        "preview_file": (
+            ("output/preview_candidate.glb" if staged_only else "output/preview.glb")
+            if export_status == "pass" else None
+        ),
         "preview_export_status": export_status,
         "result": result,
     }

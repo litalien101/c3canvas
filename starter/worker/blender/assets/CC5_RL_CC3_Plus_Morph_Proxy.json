@@ -3,8 +3,8 @@
   "asset_id": "character_cc5_rlcc3plus_all_morphs_v1",
   "source_blend_sha256": "3208d052274575d2d1b65bfdb6316da1a31395e79a31eaec95fdef8659cc19f1",
   "proxy_glb_filename": "CC5_RL_CC3_Plus_Morph_Proxy.glb",
-  "proxy_glb_sha256": "4fd5e30f500a128a19ddadf91182df5fb4a681fa903417997ffc25cb78a3ffea",
-  "proxy_glb_bytes": 10076204,
+  "proxy_glb_sha256": "e46a601ca1f7f215e32f554f0ace35ed374d2430cf796e1af13dd15faed37c42",
+  "proxy_glb_bytes": 5212224,
   "morph_deltas_filename": "CC5_RL_CC3_Plus_Morph_Deltas.zip",
   "morph_deltas_sha256": "aaccfa38594d7710d8eda59ee4aeae25ea1a6e50f58d7669effa84b6f0d1954b",
   "morph_deltas_bytes": 210288566,
@@ -181,5 +181,15 @@
       "delta_entry": "presets/male_strong_body_preset_3.bin"
     }
   ],
-  "meshopt_compression": false
+  "meshopt_compression": true,
+  "preview_texture_dimensions": {
+    "Std_Nails_Normal": [
+      512,
+      512
+    ],
+    "Std_Eyelash_Normal": [
+      512,
+      512
+    ]
+  }
 }

@@ -27,13 +27,14 @@ For this workspace, the normal development ports are API `8000` and Vite `5173`;
 - `APP_ENV=development|test|production`
 - `APP_HOST=127.0.0.1` (production requires explicit secure configuration)
 - `APP_PORT=8000`
+- `ALLOW_ACCOUNT_REGISTRATION=true|false` (defaults to enabled in development and disabled in production)
+- `ALLOWED_ORIGINS=http://localhost:5173` (comma-separated exact browser origins)
 - `DATABASE_URL=sqlite:///./data/comodel.db` for local MVP
 - `DATA_DIR=./data`
 - `COMODEL_BLENDER_EXECUTABLE=/path/to/blender`
 - `AI_PROVIDER=none|openai|anthropic|...` (implemented adapters only)
 - `AI_API_KEY` — server-side only; never commit
 - `MAX_UPLOAD_BYTES`, `MAX_IMAGE_PIXELS`, `JOB_TIMEOUT_SECONDS`
-- `ALLOWED_ORIGINS=http://localhost:5173`
 
 ## Blender runtime notes
 - Verify exact Blender version through `blender --version` and the official Python API docs for that release.

@@ -112,11 +112,51 @@
 
 **Context:** Importing large source assets while users are still choosing eyes, presets, or proportions makes editing slow and can freeze the worker. Whole-geometry snapshots per slider are also wasteful and cannot be composed efficiently.
 
-**Decision:** All editing is browser preview plus persisted project draft data. Create and persist a lightweight project and plan without Blender. Autosave a complete, manifest-validated morph map and eye/preset selections; do not store geometry snapshots or advance `scene_version` for draft edits. Eye preview loads only its integrity-pinned eye-only GLB. Plan approval changes phase state only. The user must explicitly choose **Save / Compile** or export after approval. The API sends the pinned source, saved morph map, preset, and selected eye together so the worker creates the first Blender scene only at this final compile boundary. Standalone eye attachment is forbidden.
+**Decision:** All editing is browser preview plus persisted project draft data. Create and persist a lightweight project and plan without Blender. Autosave a complete, manifest-validated morph map and eye/preset/skin selections; do not store geometry snapshots or advance `scene_version` for draft edits. Eye previews use only their integrity-pinned GLBs. Plan approval changes phase state only. The user must explicitly choose **Save / Compile** or export after approval. The API sends the pinned source, saved morph map, preset, eye, and skin together so the worker creates the first Blender scene only at this final compile boundary. Standalone eye attachment is forbidden.
 
 **Alternatives considered:** Import on project creation or eye selection (slow and caused worker resource spikes); per-slider geometry snapshots (large and non-composable); implicitly compile when approving (confuses review with a costly runtime operation).
 
-**Consequences:** Drafts, planning, approval, and draft persistence work when Blender is unavailable. CC3, eye, and preset previews run in the browser; CC5/CC3+ uses the verified local proxy when installed. If the optional CC5/CC3+ proxy is unavailable, the UI discloses that draft deformation cannot be previewed and keeps those sliders disabled rather than starting Blender. Blender is required only for explicit compile/export and explicit post-compile scene operations.
+**Consequences:** Drafts, planning, approval, and draft persistence work when Blender is unavailable. CC3, eye, and preset previews run in the browser; CC5/CC3+ uses the verified local proxy when installed. Hair generation and hairstyle preview/attachment are currently unsupported. If the optional CC5/CC3+ proxy is unavailable, the UI discloses that draft deformation cannot be previewed and keeps those sliders disabled rather than starting Blender. Blender is required only for explicit compile/export and explicit post-compile scene operations.
+
+## ADR-015 — Persist skin painting as surface UV strokes
+**Status:** Accepted for the local MVP
+
+**Context:** Users need to paint on the visible character while keeping draft edits reversible and Blender-free. Editing source diffuse images directly would make drafts destructive and couple browser editing to high-resolution asset storage.
+
+**Decision:** Convert each raycast surface hit into an allowlisted skin material and normalized UV point. Persist strokes (including optional per-point stylus pressure) as bounded project draft data. The browser composes a derived preview texture; at explicit compile, the worker replays the saved strokes onto copies of the pinned diffuse maps. A large UV jump starts a new stroke rather than bridging unrelated texture regions.
+
+**Alternatives considered:** Persist browser-mutated bitmaps (destructive and opaque); store 3D decal geometry (does not update the skin texture); invoke Blender during each edit (violates the draft/compile boundary).
+
+**Consequences:** Base maps remain unchanged while editing, and stroke data remains inspectable and replayable. The current slice provides a surface brush indicator, Paint/Erase, pressure-aware size/opacity, and stroke-level undo/clear. Semantic layer controls, redo, alpha/scatter brushes, and a synchronized UV canvas are deferred.
+
+## ADR-016 — Local accounts and project ownership
+**Status:** Accepted for the self-hosted MVP
+
+**Context:** The local API previously relied on loopback access or one server-wide bearer token, which did not provide a distinct principal for project-level authorization.
+
+**Decision:** Add local username/password accounts, scrypt password hashes, opaque server-side sessions in HttpOnly/SameSite=Strict cookies, CSRF-token checks for mutations, and an owner ID for every project. Keep account and project routes loopback-only unless `APP_ENV=production` is explicitly selected. Disable registration by default in production. Assign pre-existing ownerless projects to the first account created after migration.
+
+**Alternatives considered:** Treat every local or bearer-token request as one shared owner (does not isolate accounts); add an external identity provider (adds deployment dependencies not available in the local MVP).
+
+**Consequences:** The browser now requires sign-in and each account sees only its own project data. Password recovery, email verification, login throttling, hosted identity integration, and production readiness remain out of scope; production deployments still need HTTPS, explicit origins, rate limits, controlled provisioning, and a security review.
+
+## ADR-017 — Immediate project deletion in the local MVP
+**Status:** Accepted for local MVP
+
+**Decision:** Keep project data until the owner explicitly deletes it, then immediately remove the database project state and checkpoints, reference uploads, and per-project Blender workspace. Do not retain a trash copy or automatically expire active projects.
+
+**Why:** The existing project picker describes deletion as irreversible. Immediate cleanup honors that promise, minimizes retained user content, and avoids adding an undeclared recovery period.
+
+**Consequences:** Owners must download or otherwise preserve anything they want to keep before deletion. Hosted deployments must separately define backup retention and deletion guarantees.
+
+## ADR-018 — Hair workflow retired
+**Status:** Superseded
+
+**Context:** The initial pinned and procedural hair features were unreliable and did not meet the product's quality bar.
+
+**Decision:** Remove the Hair editor, browser previews, draft settings, API routes, and Blender worker operations. Retain the former implementation notes below only as historical context; they do not describe supported behavior.
+
+**Consequences:** Hair generation and hairstyle preview/attachment are unsupported. Any future hair implementation is a new product slice and must define its own preview, persistence, compile, validation, and rollback contracts before release.
 
 ## ADR template
 - Title / status / date

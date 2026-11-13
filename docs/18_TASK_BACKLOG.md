@@ -29,7 +29,7 @@ The roadmap and acceptance suite describe the current supported product. This is
 ## Epic C — API and persistence
 - [ ] **C-001** Replace in-memory project store with SQLModel/SQLAlchemy or equivalent repository layer.
 - [ ] **C-002** Add schema migrations.
-- [ ] **C-003** Implement project CRUD and soft delete.
+- [x] **C-003** Implement owner-scoped permanent project deletion and immediate local artifact cleanup.
 - [ ] **C-004** Implement reference upload, metadata storage, size/type/pixel limits, and deletion.
 - [ ] **C-005** Implement phase records and dependency graph validation.
 - [ ] **C-006** Implement component manifest persistence.

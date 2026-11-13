@@ -26,6 +26,10 @@ On explicit **Save / Compile** or export, the API sends the pinned base asset, c
 Outputs: improved anatomy and topology according to target profile; validation notes; stable mesh IDs.
 Gate: user approves body before clothes and accessories are fitted.
 
+
+
+Hair generation and hairstyle preview/attachment are not part of the current supported workflow. Do not add a hair phase or worker action until the feature is designed as a separate slice.
+
 ### Phase 3 — Body materials and surface details
 Outputs: skin/body materials, textures where supported, material assignments. Geometry must remain unchanged unless explicitly authorized.
 Gate: review appearance and material quality.

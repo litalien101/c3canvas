@@ -61,7 +61,9 @@ class LocalAssetStore:
         return asset_id, target
 
     def remove_reference(self, storage_key: str) -> None:
-        target = (self.root / storage_key).resolve()
-        if self.root not in target.parents:
+        if Path(storage_key).name != storage_key:
+            raise ValueError("Resolved asset path is outside the configured asset store.")
+        target = self.root / storage_key
+        if target.is_symlink() or target.resolve().parent != self.root:
             raise ValueError("Resolved asset path is outside the configured asset store.")
         target.unlink(missing_ok=True)

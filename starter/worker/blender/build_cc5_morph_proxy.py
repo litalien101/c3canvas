@@ -14,6 +14,7 @@ import bpy
 from bpy_extras.io_utils import axis_conversion
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cc5_proxy_textures import downscale_detail_textures
 import worker_entry as worker
 
 
@@ -286,6 +287,7 @@ def main() -> None:
         raise ValueError("The CC5 body preset manifest is invalid")
     if set(meshes) != set(expected_names):
         raise ValueError("Imported CC5 proxy meshes do not match the pinned manifest")
+    preview_texture_dimensions = downscale_detail_textures(bpy.data.images)
     blender_to_gltf = axis_conversion(
         from_forward="Y",
         from_up="Z",
@@ -310,7 +312,7 @@ def main() -> None:
             bpy,
             temporary_glb,
             cc5_subdivision=False,
-            meshopt_compression=False,
+            meshopt_compression=True,
             export_attributes=True,
         )
         gltf, binary, chunks = read_glb(temporary_glb)
@@ -491,7 +493,8 @@ def main() -> None:
             "mesh_names": expected_names,
             "control_count": len(manifest["controls"]),
             "body_presets": body_presets,
-            "meshopt_compression": False,
+            "preview_texture_dimensions": preview_texture_dimensions,
+            "meshopt_compression": "EXT_meshopt_compression" in gltf.get("extensionsUsed", []),
         }
         build_manifest_temp.write_text(json.dumps(build_manifest, indent=2) + "\n", encoding="utf-8")
         for source, target in zip(
