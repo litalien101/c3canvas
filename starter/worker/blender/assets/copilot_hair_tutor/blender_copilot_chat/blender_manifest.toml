@@ -1,0 +1,14 @@
+schema_version = "1.0.0"
+id = "blender_copilot_chat"
+version = "0.1.8"
+name = "Copilot Hair Tutor"
+tagline = "Step-by-step realistic hair guidance inside Blender"
+maintainer = "Blender Copilot Chat contributors"
+type = "add-on"
+tags = ["User Interface"]
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read user-selected images and local Copilot bridge config"
+network = "Contact the authenticated VS Code Copilot bridge on localhost"

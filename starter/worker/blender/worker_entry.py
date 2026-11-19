@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from array import array
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -22,11 +23,13 @@ from pathlib import Path
 from uuid import UUID
 
 API_TRANSACTION_CONTRACT_VERSION = "transaction-v1"
-WORKER_CONTRACT_VERSION = "worker-staged-v1"
+WORKER_CONTRACT_VERSION = "worker-staged-v2"
 SUPPORTED_API_CONTRACT_VERSIONS = {API_TRANSACTION_CONTRACT_VERSION}
 
 ALLOWED_OPERATIONS = {
     "import_base_model",
+    "create_hair_scalp",
+    "generate_hair_guides",
     "apply_cc3_morph_controls",
     "apply_cc3_body_preset",
     "preview_cc3_morph_controls",
@@ -56,6 +59,17 @@ CC3_ASSET_CONFIG = {
 CC3_MODEL_HEIGHT = 2.7
 CC3_SHARED_ROOT = Path(__file__).resolve().parents[2] / "shared"
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+HAIR_TUTOR_PACKAGE_ROOT = (
+    Path(__file__).resolve().parent
+    / "assets"
+    / "copilot_hair_tutor"
+    / "blender_copilot_chat"
+)
+HAIR_TUTOR_PACKAGE_PIN_PATH = CC3_SHARED_ROOT / "hair_tutor_package.json"
+HAIR_TUTOR_PACKAGE_ID = "blender_copilot_chat"
+HAIR_TUTOR_PACKAGE_VERSION = "0.1.8"
+HAIR_TUTOR_APPROVAL_STATUS = "owner_reviewed_origin_unverified"
+HAIR_TUTOR_PACKAGE_MODULE = None
 CC5_BODY_PRESETS_MANIFEST = json.loads(
     (CC3_SHARED_ROOT / "cc5_body_presets.json").read_text(encoding="utf-8")
 )
@@ -228,6 +242,11 @@ def load_job(job_path: Path, staged_only: bool = False) -> dict:
     arguments = data["arguments"]
     allowed_arguments = {
         "import_base_model": set(),
+        "create_hair_scalp": {"component_id", "body_component_id", "body_object_id"},
+        "generate_hair_guides": {
+            "component_id", "scalp_component_id", "scalp_object_id",
+            "guide_count", "guide_length", "seed",
+        },
         "apply_cc3_morph_controls": {"component_id", "asset_id", "morphs"},
         "apply_cc3_body_preset": {
             "component_id", "asset_id", "morphs", "preset_id", "preset_ids",
@@ -307,6 +326,41 @@ def load_job(job_path: Path, staged_only: bool = False) -> dict:
             validate_skin_definition(arguments["skin_definition"])
             if skin_asset_id is None:
                 raise ValueError("skin_definition requires a selected skin asset")
+    elif operation == "create_hair_scalp":
+        component_id = safe_component_id(arguments["component_id"])
+        body_component_id = safe_component_id(arguments["body_component_id"])
+        safe_component_id(arguments["body_object_id"])
+        if (
+            component_id == body_component_id
+            or scope_ids != [component_id]
+            or dependency_ids != [body_component_id]
+            or not arguments["body_object_id"].endswith("-cc_base_body")
+        ):
+            raise ValueError("Hair scalp must target a new component and depend on the stable CC_Base_Body object")
+    elif operation == "generate_hair_guides":
+        component_id = safe_component_id(arguments["component_id"])
+        scalp_component_id = safe_component_id(arguments["scalp_component_id"])
+        safe_component_id(arguments["scalp_object_id"])
+        guide_count = arguments["guide_count"]
+        guide_length = arguments["guide_length"]
+        seed = arguments["seed"]
+        if (
+            component_id == scalp_component_id
+            or scope_ids != [component_id]
+            or dependency_ids != [scalp_component_id]
+            or not arguments["scalp_object_id"].endswith("-scalp")
+            or isinstance(guide_count, bool)
+            or not isinstance(guide_count, int)
+            or not 1 <= guide_count <= 128
+            or isinstance(guide_length, bool)
+            or not isinstance(guide_length, (int, float))
+            or not math.isfinite(guide_length)
+            or not 0.01 <= guide_length <= 2.0
+            or isinstance(seed, bool)
+            or not isinstance(seed, int)
+            or not -(2**31) <= seed <= 2**31 - 1
+        ):
+            raise ValueError("Hair guide request contains invalid component identities or bounded guide settings")
     elif operation in {
         "apply_cc3_morph_controls",
         "apply_cc3_body_preset",
@@ -357,6 +411,240 @@ def safe_component_id(value: object) -> str:
     if not isinstance(value, str) or not COMPONENT_ID_PATTERN.fullmatch(value):
         raise ValueError("component_id contains unsupported characters")
     return value
+
+
+def verify_pinned_hair_tutor_package() -> dict:
+    if HAIR_TUTOR_PACKAGE_PIN_PATH.is_symlink() or HAIR_TUTOR_PACKAGE_ROOT.is_symlink():
+        raise ValueError("Hair Tutor package and pin paths cannot be symbolic links")
+    try:
+        pin = json.loads(HAIR_TUTOR_PACKAGE_PIN_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("Hair Tutor package pin is unavailable or invalid") from error
+    provenance = pin.get("provenance") if isinstance(pin, dict) else None
+    if (
+        not isinstance(pin, dict)
+        or not isinstance(provenance, dict)
+        or pin.get("package_id") != HAIR_TUTOR_PACKAGE_ID
+        or pin.get("version") != HAIR_TUTOR_PACKAGE_VERSION
+        or pin.get("approval_status") != HAIR_TUTOR_APPROVAL_STATUS
+        or provenance.get("status") != "unverified"
+    ):
+        raise ValueError("Hair Tutor package is not approved by the deployment pin")
+
+    file_records = pin.get("files")
+    if not isinstance(file_records, list) or not file_records:
+        raise ValueError("Hair Tutor package pin has no file inventory")
+    expected_files = {}
+    for record in file_records:
+        if not isinstance(record, dict) or set(record) != {"path", "size_bytes", "sha256"}:
+            raise ValueError("Hair Tutor package pin contains an invalid file record")
+        relative_path = record["path"]
+        path_parts = relative_path.split("/") if isinstance(relative_path, str) else []
+        if (
+            not path_parts
+            or any(part in {"", ".", ".."} for part in path_parts)
+            or "\\" in relative_path
+            or not isinstance(record["size_bytes"], int)
+            or isinstance(record["size_bytes"], bool)
+            or record["size_bytes"] < 0
+            or not isinstance(record["sha256"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"])
+            or relative_path in expected_files
+        ):
+            raise ValueError("Hair Tutor package pin contains an unsafe or duplicate file path")
+        expected_files[relative_path] = record
+
+    if not HAIR_TUTOR_PACKAGE_ROOT.is_dir():
+        raise ValueError("Pinned Hair Tutor package files are unavailable")
+    actual_files = set()
+    for path in HAIR_TUTOR_PACKAGE_ROOT.rglob("*"):
+        if path.is_symlink():
+            raise ValueError("Hair Tutor package contents cannot contain symbolic links")
+        if path.is_file():
+            actual_files.add(path.relative_to(HAIR_TUTOR_PACKAGE_ROOT).as_posix())
+    if actual_files != set(expected_files):
+        raise ValueError("Hair Tutor package file list does not match the deployment pin")
+
+    tree_records = []
+    for relative_path in sorted(expected_files):
+        path = HAIR_TUTOR_PACKAGE_ROOT.joinpath(*relative_path.split("/"))
+        record = expected_files[relative_path]
+        if (
+            not path.is_file()
+            or path.stat().st_size != record["size_bytes"]
+            or _sha256_file(path) != record["sha256"]
+        ):
+            raise ValueError(f"Pinned Hair Tutor package file failed integrity validation: {relative_path}")
+        tree_records.append(
+            relative_path.encode("utf-8")
+            + b"\0"
+            + record["sha256"].encode("ascii")
+            + b"\n"
+        )
+    tree_hash = hashlib.sha256(b"".join(tree_records)).hexdigest()
+    archive_hash = pin.get("archive_sha256")
+    if (
+        tree_hash != pin.get("package_tree_sha256")
+        or not isinstance(archive_hash, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", archive_hash)
+    ):
+        raise ValueError("Hair Tutor package tree hash does not match the deployment pin")
+
+    return pin
+
+
+def load_pinned_hair_tutor():
+    global HAIR_TUTOR_PACKAGE_MODULE
+
+    pin = verify_pinned_hair_tutor_package()
+    if HAIR_TUTOR_PACKAGE_MODULE is None:
+        init_path = HAIR_TUTOR_PACKAGE_ROOT / "__init__.py"
+        spec = importlib.util.spec_from_file_location(
+            "comodel_pinned_hair_tutor",
+            init_path,
+            submodule_search_locations=[str(HAIR_TUTOR_PACKAGE_ROOT)],
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError("Pinned Hair Tutor package could not be loaded")
+        module = importlib.util.module_from_spec(spec)
+        write_bytecode = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.dont_write_bytecode = write_bytecode
+        HAIR_TUTOR_PACKAGE_MODULE = module
+    return HAIR_TUTOR_PACKAGE_MODULE, pin
+
+
+def find_component_object(
+    bpy,
+    component_id: str,
+    object_id: str,
+    *,
+    expected_type: str,
+    expected_semantic_type: str,
+):
+    safe_component_id(component_id)
+    if not isinstance(object_id, str) or not COMPONENT_ID_PATTERN.fullmatch(object_id):
+        raise ValueError("object_id contains unsupported characters")
+    matches = [
+        obj
+        for obj in bpy.context.scene.objects
+        if obj.get("comodel_component_id") == component_id
+        and obj.get("comodel_object_id") == object_id
+    ]
+    if len(matches) != 1:
+        raise ValueError("VALIDATION_FAILED: stable component object identity did not resolve uniquely")
+    obj = matches[0]
+    if obj.type != expected_type or obj.get("comodel_semantic_type") != expected_semantic_type:
+        raise ValueError("SCOPE_VIOLATION: stable component object identity has an incompatible type")
+    return obj
+
+
+def create_hair_scalp(bpy, args: dict, hair_tutor, pin: dict) -> dict:
+    component_id = safe_component_id(args["component_id"])
+    body_component_id = safe_component_id(args["body_component_id"])
+    if component_id == body_component_id:
+        raise ValueError("Hair scalp and source body must use different component IDs")
+    if any(
+        obj.get("comodel_component_id") == component_id
+        for obj in bpy.context.scene.objects
+    ):
+        raise ValueError("VALIDATION_FAILED: hair scalp component ID already exists in the scene")
+    if any(
+        obj.get("comodel_source_body_component_id") == body_component_id
+        for obj in bpy.context.scene.objects
+    ):
+        raise ValueError("SCALP_ALREADY_EXISTS: this body already has a hair scalp")
+
+    source = find_component_object(
+        bpy,
+        body_component_id,
+        args["body_object_id"],
+        expected_type="MESH",
+        expected_semantic_type="body",
+    )
+    scalp = hair_tutor.create_hair_asset_scalp(source)
+    collection = get_or_create_collection(bpy, f"CoModel/Components/{component_id}")
+    move_to_collection(scalp, collection)
+    scalp["comodel_component_id"] = component_id
+    scalp["comodel_object_id"] = f"{component_id}-scalp"
+    scalp["comodel_semantic_type"] = "hair_scalp"
+    scalp["comodel_source_body_component_id"] = body_component_id
+    scalp["comodel_source_body_object_id"] = args["body_object_id"]
+    scalp["comodel_hair_package_id"] = pin["package_id"]
+    scalp["comodel_hair_package_version"] = pin["version"]
+    return {
+        "component_id": component_id,
+        "body_component_id": body_component_id,
+        "body_object_id": args["body_object_id"],
+        "package_id": pin["package_id"],
+        "package_version": pin["version"],
+        "package_tree_sha256": pin["package_tree_sha256"],
+    }
+
+
+def generate_hair_guides(bpy, args: dict, hair_tutor, pin: dict) -> dict:
+    component_id = safe_component_id(args["component_id"])
+    scalp_component_id = safe_component_id(args["scalp_component_id"])
+    if component_id == scalp_component_id:
+        raise ValueError("Hair guide and scalp must use different component IDs")
+    if any(
+        obj.get("comodel_component_id") == component_id
+        for obj in bpy.context.scene.objects
+    ):
+        raise ValueError("VALIDATION_FAILED: hair guide component ID already exists in the scene")
+    if any(
+        obj.get("comodel_scalp_component_id") == scalp_component_id
+        for obj in bpy.context.scene.objects
+    ):
+        raise ValueError("GUIDES_ALREADY_EXIST: this scalp already has a Hair Curves component")
+
+    scalp = find_component_object(
+        bpy,
+        scalp_component_id,
+        args["scalp_object_id"],
+        expected_type="MESH",
+        expected_semantic_type="hair_scalp",
+    )
+    if (
+        scalp.get("comodel_hair_package_id") != pin["package_id"]
+        or scalp.get("comodel_hair_package_version") != pin["version"]
+    ):
+        raise ValueError("Hair scalp was not created with the pinned Hair Tutor package")
+
+    collection = get_or_create_collection(bpy, f"CoModel/Components/{component_id}")
+    hair_object = hair_tutor.create_hair_curves_object(
+        scalp,
+        collection,
+        name=f"Hair Guides {component_id[:8]}",
+    )
+    hair_tutor.attach_hair_curves_to_scalp(hair_object, scalp)
+    hair_tutor.generate_scalp_guides(
+        hair_object,
+        guide_count=args["guide_count"],
+        guide_length=args["guide_length"],
+        seed=args["seed"],
+    )
+    hair_object["comodel_component_id"] = component_id
+    hair_object["comodel_object_id"] = f"{component_id}-curves"
+    hair_object["comodel_semantic_type"] = "hair_guides"
+    hair_object["comodel_scalp_component_id"] = scalp_component_id
+    hair_object["comodel_scalp_object_id"] = args["scalp_object_id"]
+    hair_object["comodel_hair_package_id"] = pin["package_id"]
+    hair_object["comodel_hair_package_version"] = pin["version"]
+    return {
+        "component_id": component_id,
+        "scalp_component_id": scalp_component_id,
+        "scalp_object_id": args["scalp_object_id"],
+        "package_id": pin["package_id"],
+        "package_version": pin["version"],
+        "package_tree_sha256": pin["package_tree_sha256"],
+        "guide_count": len(hair_object.data.curves),
+        "guide_length": args["guide_length"],
+        "seed": args["seed"],
+    }
 
 
 def _validate_morph_map(asset_id: str, morphs: object) -> dict:
@@ -1652,7 +1940,12 @@ def _import_character_cc3_glb(
             })
 
     for image in bpy.data.images:
-        if image.users > 0 and image.size[0] > 0 and not image.packed_file:
+        if (
+            image.source not in {"VIEWER", "RENDER_RESULT"}
+            and image.users > 0
+            and image.size[0] > 0
+            and not image.packed_file
+        ):
             image.pack()
     bpy.context.view_layer.update()
     if clear_default_cube:
@@ -1850,7 +2143,12 @@ def _import_character_cc5_blend(
             })
 
     for image in bpy.data.images:
-        if image.users > 0 and image.size[0] > 0 and not image.packed_file:
+        if (
+            image.source not in {"VIEWER", "RENDER_RESULT"}
+            and image.users > 0
+            and image.size[0] > 0
+            and not image.packed_file
+        ):
             image.pack()
     bpy.context.view_layer.update()
     if clear_default_cube:
@@ -2444,6 +2742,8 @@ def main(*, force_staged_only: bool = False) -> int:
         {op_args["component_id"]}
         if operation in {
             "import_base_model",
+            "create_hair_scalp",
+            "generate_hair_guides",
             "attach_eye_asset",
             "apply_cc3_morph_controls",
             "apply_cc3_body_preset",
@@ -2481,6 +2781,12 @@ def main(*, force_staged_only: bool = False) -> int:
             op_args,
             clear_default_cube=current_version == 0 and not before_fingerprints,
         )
+    elif operation == "create_hair_scalp":
+        hair_tutor, pin = load_pinned_hair_tutor()
+        result = create_hair_scalp(bpy, op_args, hair_tutor, pin)
+    elif operation == "generate_hair_guides":
+        hair_tutor, pin = load_pinned_hair_tutor()
+        result = generate_hair_guides(bpy, op_args, hair_tutor, pin)
     elif operation == "attach_eye_asset":
         allowed_component_ids.add(op_args["component_id"])
         result = attach_eye_asset(bpy, op_args)
@@ -2507,6 +2813,8 @@ def main(*, force_staged_only: bool = False) -> int:
         raise ValueError("Unsupported operation")
     if operation in {
         "import_base_model",
+        "create_hair_scalp",
+        "generate_hair_guides",
         "attach_eye_asset",
         "apply_cc3_morph_controls",
         "apply_cc3_body_preset",
@@ -2515,7 +2823,7 @@ def main(*, force_staged_only: bool = False) -> int:
     }:
         after_fingerprints = component_object_fingerprints(bpy, allowed_component_ids)
         verify_operation_scope(before_fingerprints, after_fingerprints, allowed_component_ids)
-        if operation == "import_base_model":
+        if operation in {"import_base_model", "create_hair_scalp", "generate_hair_guides"}:
             component_id = op_args["component_id"]
             geometry_hash, object_ids = component_geometry_hash(bpy, component_id)
             result["geometry_hash"] = geometry_hash
