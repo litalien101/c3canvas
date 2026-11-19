@@ -1652,7 +1652,12 @@ def _import_character_cc3_glb(
             })
 
     for image in bpy.data.images:
-        if image.users > 0 and image.size[0] > 0 and not image.packed_file:
+        if (
+            image.source not in {"VIEWER", "RENDER_RESULT"}
+            and image.users > 0
+            and image.size[0] > 0
+            and not image.packed_file
+        ):
             image.pack()
     bpy.context.view_layer.update()
     if clear_default_cube:
@@ -1850,7 +1855,12 @@ def _import_character_cc5_blend(
             })
 
     for image in bpy.data.images:
-        if image.users > 0 and image.size[0] > 0 and not image.packed_file:
+        if (
+            image.source not in {"VIEWER", "RENDER_RESULT"}
+            and image.users > 0
+            and image.size[0] > 0
+            and not image.packed_file
+        ):
             image.pack()
     bpy.context.view_layer.update()
     if clear_default_cube:
