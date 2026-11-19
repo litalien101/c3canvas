@@ -1321,6 +1321,8 @@ paths:
               - $ref: '#/components/schemas/ApplyCC3BodyPresetTool'
               - $ref: '#/components/schemas/BakeCC3MorphControlsTool'
               - $ref: '#/components/schemas/AttachEyeAssetTool'
+              - $ref: '#/components/schemas/CreateHairScalpTool'
+              - $ref: '#/components/schemas/GenerateHairGuidesTool'
               discriminator:
                 propertyName: tool_name
                 mapping:
@@ -1329,6 +1331,8 @@ paths:
                   apply_cc3_body_preset: '#/components/schemas/ApplyCC3BodyPresetTool'
                   bake_cc3_morph_controls: '#/components/schemas/BakeCC3MorphControlsTool'
                   attach_eye_asset: '#/components/schemas/AttachEyeAssetTool'
+                  create_hair_scalp: '#/components/schemas/CreateHairScalpTool'
+                  generate_hair_guides: '#/components/schemas/GenerateHairGuidesTool'
               title: Payload
       responses:
         '200':
@@ -1776,6 +1780,128 @@ components:
       - dependency_component_ids
       - arguments
       title: AttachEyeAssetTool
+    CreateHairScalpArguments:
+      properties:
+        body_component_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[A-Za-z0-9_-]+$
+          title: Body Component Id
+      additionalProperties: false
+      type: object
+      required:
+      - body_component_id
+      title: CreateHairScalpArguments
+    CreateHairScalpTool:
+      properties:
+        tool_name:
+          type: string
+          const: create_hair_scalp
+          title: Tool Name
+        operation_id:
+          type: string
+          format: uuid
+          title: Operation Id
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+        scope_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 0
+          title: Scope Component Ids
+        dependency_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 1
+          minItems: 1
+          title: Dependency Component Ids
+        arguments:
+          $ref: '#/components/schemas/CreateHairScalpArguments'
+      additionalProperties: false
+      type: object
+      required:
+      - tool_name
+      - operation_id
+      - expected_scene_version
+      - scope_component_ids
+      - dependency_component_ids
+      - arguments
+      title: CreateHairScalpTool
+    GenerateHairGuidesArguments:
+      properties:
+        scalp_component_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[A-Za-z0-9_-]+$
+          title: Scalp Component Id
+        guide_count:
+          type: integer
+          maximum: 128
+          minimum: 1
+          default: 16
+          title: Guide Count
+        guide_length:
+          type: number
+          maximum: 2.0
+          minimum: 0.01
+          default: 0.15
+          title: Guide Length
+        seed:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          default: 0
+          title: Seed
+      additionalProperties: false
+      type: object
+      required:
+      - scalp_component_id
+      title: GenerateHairGuidesArguments
+    GenerateHairGuidesTool:
+      properties:
+        tool_name:
+          type: string
+          const: generate_hair_guides
+          title: Tool Name
+        operation_id:
+          type: string
+          format: uuid
+          title: Operation Id
+        expected_scene_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Scene Version
+        scope_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 0
+          title: Scope Component Ids
+        dependency_component_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 1
+          minItems: 1
+          title: Dependency Component Ids
+        arguments:
+          $ref: '#/components/schemas/GenerateHairGuidesArguments'
+      additionalProperties: false
+      type: object
+      required:
+      - tool_name
+      - operation_id
+      - expected_scene_version
+      - scope_component_ids
+      - dependency_component_ids
+      - arguments
+      title: GenerateHairGuidesTool
     AuthSessionResponse:
       properties:
         account:
@@ -2285,6 +2411,8 @@ components:
           - apply_cc3_body_preset
           - bake_cc3_morph_controls
           - attach_eye_asset
+          - create_hair_scalp
+          - generate_hair_guides
           title: Tool Name
         request_hash:
           type: string

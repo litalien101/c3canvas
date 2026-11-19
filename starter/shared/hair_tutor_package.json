@@ -1,0 +1,33 @@
+{
+  "package_id": "blender_copilot_chat",
+  "version": "0.1.8",
+  "approval_status": "owner_reviewed_origin_unverified",
+  "provenance": {
+    "status": "unverified",
+    "source_repository": null,
+    "source_revision": null,
+    "note": "The project owner approved this exact inspected artifact for allowlisted worker use while acknowledging that its independent source provenance is unverified."
+  },
+  "archive_sha256": "4286ce503ada430beb4a4f3c5edc23fa2fd821272cfb261390d1165f533cbd7c",
+  "tree_hash_algorithm": "SHA-256 of sorted UTF-8 records: relative POSIX path, NUL, lowercase file SHA-256, LF",
+  "package_tree_sha256": "b56459c771149d3797a478a1f3050837cb19c3ed7f9925bad6294a999769d679",
+  "blender_version_validated": "5.2.2",
+  "runtime_policy": "Import without register() or unregister(); invoke only the scalp, native Curves, attachment, and guide APIs.",
+  "files": [
+    {
+      "path": "__init__.py",
+      "size_bytes": 123294,
+      "sha256": "f27827e9765d5b1f3af21d59a331b832f4991160c3cd86f62fc95f224d91f2cd"
+    },
+    {
+      "path": "assets/base_scalp.blend",
+      "size_bytes": 880978,
+      "sha256": "f3c5e46514c27c39f9d9bf46f130ba95b5d9fa391e81763d43cd18b0801ca3e9"
+    },
+    {
+      "path": "blender_manifest.toml",
+      "size_bytes": 491,
+      "sha256": "f7392890e11b7afe7cec7da36a1ba215cc424127ce02816cabefc1c5be0070f0"
+    }
+  ]
+}

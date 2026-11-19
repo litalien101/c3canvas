@@ -158,6 +158,15 @@
 
 **Consequences:** Hair generation and hairstyle preview/attachment are unsupported. Any future hair implementation is a new product slice and must define its own preview, persistence, compile, validation, and rollback contracts before release.
 
+## ADR-019 — Scoped native hair worker operations
+**Status:** Accepted
+
+**Context:** The transaction foundation is live-validated. The local Copilot Hair Tutor 0.1.8 archive passed headless API checks in Blender 5.2.2, but no independently trusted source repository or revision was established.
+
+**Decision:** The project owner approved the exact archive for a narrowly allowlisted, staged worker integration while explicitly accepting that its origin remains unverified. Record its archive and canonical package-tree hashes, exact file inventory, and approval status in `starter/shared/hair_tutor_package.json`. Support only `create_hair_scalp` and `generate_hair_guides`, resolve objects using stable CoModel component/object IDs, and rely on transaction operation IDs plus persisted allocated component IDs for retries. Import the package without calling `register()` or `unregister()`.
+
+**Consequences:** Native editable Hair Curves guides are created but remain hidden from renders. Visible/exportable hair, scalp-mask-guided distribution, morph refitting, browser draft controls, and hairstyle preview are excluded. This decision authorizes source changes only; it does not authorize production deployment or mutation of any live project.
+
 ## ADR template
 - Title / status / date
 - Context

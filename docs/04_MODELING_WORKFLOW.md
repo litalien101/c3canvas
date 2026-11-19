@@ -28,7 +28,7 @@ Gate: user approves body before clothes and accessories are fitted.
 
 
 
-Hair generation and hairstyle preview/attachment are not part of the current supported workflow. Do not add a hair phase or worker action until the feature is designed as a separate slice.
+Hair has no browser phase, draft controls, or hairstyle preview/attachment workflow. The API separately supports only the transaction-controlled `create_hair_scalp` and `generate_hair_guides` worker operations; these create editable native geometry and do not produce visible/exportable hair.
 
 ### Phase 3 — Body materials and surface details
 Outputs: skin/body materials, textures where supported, material assignments. Geometry must remain unchanged unless explicitly authorized.

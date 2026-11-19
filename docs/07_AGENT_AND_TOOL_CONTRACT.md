@@ -35,8 +35,10 @@ Do not put every role into one unbounded prompt loop.
 3. `bake_cc3_morph_controls` — apply a complete asset-specific morph map to exactly one matching CC3 body, freeze it into mesh geometry, and remove editable shape keys. The server checkpoints before baking; restore that checkpoint to recover sliders.
 4. `restore_checkpoint` — restore an authorized saved scene while advancing its version.
 5. `validate_scene_structure` — validate Blender object identifiers.
+6. `create_hair_scalp` — create a separate pinned-package scalp component from the character body's stable object ID.
+7. `generate_hair_guides` — create a separate attached native Hair Curves component with bounded guide settings.
 
-Hair routes and worker tools are currently unsupported. A future hair feature must define its draft/preview/compile behavior, scoped operations, validation, and tests before entering either allowlist.
+The scalp and guide operations have no browser draft controls or hairstyle preview. Their package origin is recorded as unverified, and the worker accepts the exact owner-reviewed file/tree pin only. The guides are editable but hidden from renders; visible/exportable hair, scalp-mask-driven distribution, and morph refitting remain out of scope.
 
 The active API and worker reject retired placeholder, OBJ, legacy CC5-import, garment, eyelid, and ear-sculpt operations. The supported CC5/CC3+ full-morph asset is accepted only through the pinned `import_base_model` contract. A future tool requires a documented scope, validation contract, approval behavior, and passing tests before it is added to either allowlist.
 

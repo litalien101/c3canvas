@@ -45,7 +45,12 @@ def create_job(
     return job_path
 
 
-def run_worker(job_path: Path, *, staged_only: bool = False) -> subprocess.CompletedProcess[str]:
+def run_worker(
+    job_path: Path,
+    *,
+    staged_only: bool = False,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     arguments = [
         "--job",
         str(job_path),
@@ -69,6 +74,7 @@ def run_worker(job_path: Path, *, staged_only: bool = False) -> subprocess.Compl
         text=True,
         timeout=600,
         check=False,
+        env=env,
     )
 
 
@@ -422,6 +428,425 @@ def test_retired_hair_worker_operations_and_import_fields_are_rejected(tmp_path)
     )
     with pytest.raises(ValueError, match="unsupported fields"):
         WORKER_MODULE.load_job(job_path)
+
+
+def test_hair_worker_operations_require_stable_component_scope_and_bounded_arguments(tmp_path):
+    scalp_component_id = str(uuid.uuid4())
+    body_component_id = str(uuid.uuid4())
+    scalp_job = create_job(
+        tmp_path,
+        operation="create_hair_scalp",
+        expected_scene_version=1,
+        arguments={
+            "component_id": scalp_component_id,
+            "body_component_id": body_component_id,
+            "body_object_id": f"{body_component_id}-cc_base_body",
+        },
+        scope_component_ids=[scalp_component_id],
+        dependency_component_ids=[body_component_id],
+    )
+    assert WORKER_MODULE.load_job(scalp_job)["operation"] == "create_hair_scalp"
+
+    guide_component_id = str(uuid.uuid4())
+    guide_job = create_job(
+        tmp_path,
+        operation="generate_hair_guides",
+        expected_scene_version=2,
+        arguments={
+            "component_id": guide_component_id,
+            "scalp_component_id": scalp_component_id,
+            "scalp_object_id": f"{scalp_component_id}-scalp",
+            "guide_count": 16,
+            "guide_length": 0.15,
+            "seed": 23,
+        },
+        scope_component_ids=[guide_component_id],
+        dependency_component_ids=[scalp_component_id],
+    )
+    assert WORKER_MODULE.load_job(guide_job)["arguments"]["guide_count"] == 16
+
+    invalid_cases = (
+        (
+            "create_hair_scalp",
+            {
+                "component_id": scalp_component_id,
+                "body_component_id": body_component_id,
+                "body_object_id": f"{body_component_id}-cc_base_body",
+                "source_object_name": "CC_Base_Body",
+            },
+            [scalp_component_id],
+            [body_component_id],
+            "missing or unsupported",
+        ),
+        (
+            "create_hair_scalp",
+            {
+                "component_id": scalp_component_id,
+                "body_component_id": body_component_id,
+                "body_object_id": f"{body_component_id}-cc_base_body",
+            },
+            [],
+            [body_component_id],
+            "stable CC_Base_Body object",
+        ),
+        (
+            "generate_hair_guides",
+            {
+                "component_id": guide_component_id,
+                "scalp_component_id": scalp_component_id,
+                "scalp_object_id": f"{scalp_component_id}-scalp",
+                "guide_count": 129,
+                "guide_length": 0.15,
+                "seed": 23,
+            },
+            [guide_component_id],
+            [scalp_component_id],
+            "bounded guide settings",
+        ),
+        (
+            "generate_hair_guides",
+            {
+                "component_id": guide_component_id,
+                "scalp_component_id": scalp_component_id,
+                "scalp_object_id": f"{scalp_component_id}-scalp",
+                "guide_count": True,
+                "guide_length": 0.15,
+                "seed": 23,
+            },
+            [guide_component_id],
+            [scalp_component_id],
+            "bounded guide settings",
+        ),
+    )
+    for operation, arguments, scope, dependencies, message in invalid_cases:
+        job_path = create_job(
+            tmp_path,
+            operation=operation,
+            expected_scene_version=1,
+            arguments=arguments,
+            scope_component_ids=scope,
+            dependency_component_ids=dependencies,
+        )
+        with pytest.raises(ValueError, match=message):
+            WORKER_MODULE.load_job(job_path)
+
+
+def test_hair_tutor_package_verification_enforces_the_deployment_pin(tmp_path, monkeypatch):
+    pin = WORKER_MODULE.verify_pinned_hair_tutor_package()
+    assert pin["package_id"] == "blender_copilot_chat"
+    assert pin["version"] == "0.1.8"
+    assert pin["approval_status"] == "owner_reviewed_origin_unverified"
+    assert pin["provenance"]["status"] == "unverified"
+    assert len(pin["files"]) == 3
+
+    package_root = tmp_path / "blender_copilot_chat"
+    shutil.copytree(WORKER_MODULE.HAIR_TUTOR_PACKAGE_ROOT, package_root)
+    pin_path = tmp_path / "hair_tutor_package.json"
+    shutil.copy2(WORKER_MODULE.HAIR_TUTOR_PACKAGE_PIN_PATH, pin_path)
+    monkeypatch.setattr(WORKER_MODULE, "HAIR_TUTOR_PACKAGE_ROOT", package_root)
+    monkeypatch.setattr(WORKER_MODULE, "HAIR_TUTOR_PACKAGE_PIN_PATH", pin_path)
+    assert WORKER_MODULE.verify_pinned_hair_tutor_package()["package_tree_sha256"] == pin["package_tree_sha256"]
+
+    (package_root / "__init__.py").write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="failed integrity validation"):
+        WORKER_MODULE.verify_pinned_hair_tutor_package()
+
+
+@pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
+def test_staged_hair_operations_preserve_character_and_persist_native_guides(tmp_path):
+    project_id = "1952985a-1503-4427-8861-9cedc54c3f5b"
+    body_component_id = str(uuid.uuid4())
+    scalp_component_id = str(uuid.uuid4())
+    guide_component_id = str(uuid.uuid4())
+    committed_output = tmp_path / "committed" / "output"
+    committed_output.mkdir(parents=True)
+    home = tmp_path / "home"
+    temp = tmp_path / "tmp"
+    config = tmp_path / "config"
+    for path in (home, temp, config):
+        path.mkdir()
+    child_env = dict(os.environ)
+    child_env.update({
+        "HOME": str(home),
+        "TMPDIR": str(temp),
+        "TEMP": str(temp),
+        "TMP": str(temp),
+        "BLENDER_USER_CONFIG": str(config),
+        "LANG": "C.UTF-8",
+    })
+
+    fixture_script = tmp_path / "create_hair_fixture.py"
+    fixture_script.write_text(
+        """
+import json
+import sys
+from pathlib import Path
+import bpy
+
+scene_path, body_component_id, project_id, worker_directory, snapshot_path = (
+    sys.argv[sys.argv.index("--") + 1:]
+)
+sys.path.insert(0, worker_directory)
+import worker_entry as worker
+
+hair_tutor, _pin = worker.load_pinned_hair_tutor()
+bpy.ops.wm.read_factory_settings(use_empty=True)
+with bpy.data.libraries.load(str(hair_tutor._BASE_SCALP_ASSET), link=False) as (source, target):
+    target.objects = ["Copilot_Base_Scalp"]
+asset_scalp = target.objects[0]
+required_bones = {
+    group.name
+    for group in asset_scalp.vertex_groups
+    if any(
+        assignment.group == group.index and assignment.weight > 0.0
+        for vertex in asset_scalp.data.vertices
+        for assignment in vertex.groups
+    )
+}
+asset_mesh = asset_scalp.data
+bpy.data.objects.remove(asset_scalp, do_unlink=True)
+if asset_mesh.users == 0:
+    bpy.data.meshes.remove(asset_mesh)
+
+mesh = bpy.data.meshes.new("Fixture_Character_Mesh")
+mesh.from_pydata(
+    [(-1,-1,-1), (1,-1,-1), (1,1,-1), (-1,1,-1),
+     (-1,-1,1), (1,-1,1), (1,1,1), (-1,1,1)],
+    [],
+    [(0,1,2,3), (4,7,6,5), (0,4,5,1), (1,5,6,2), (2,6,7,3), (4,0,3,7)],
+)
+uv_layer = mesh.uv_layers.new(name="CharacterUV")
+for index, loop in enumerate(uv_layer.data):
+    loop.uv = ((index % 4) / 3.0, (index // 4) / 3.0)
+body = bpy.data.objects.new("Fixture_Character", mesh)
+bpy.context.scene.collection.objects.link(body)
+body.shape_key_add(name="Basis")
+smile = body.shape_key_add(name="Fixture_Smile")
+smile.data[0].co.z += 0.1
+smile.value = 0.0
+head_group = body.vertex_groups.new(name="Head")
+head_group.add(list(range(len(mesh.vertices))), 1.0, "REPLACE")
+armature_data = bpy.data.armatures.new("Fixture_Rig")
+armature = bpy.data.objects.new("Fixture_Rig", armature_data)
+bpy.context.scene.collection.objects.link(armature)
+bpy.ops.object.select_all(action="DESELECT")
+armature.select_set(True)
+bpy.context.view_layer.objects.active = armature
+bpy.ops.object.mode_set(mode="EDIT")
+for index, name in enumerate(sorted(required_bones)):
+    bone = armature_data.edit_bones.new(name)
+    bone.head = (0.0, 0.0, float(index))
+    bone.tail = (0.0, 0.0, float(index) + 0.5)
+bpy.ops.object.mode_set(mode="OBJECT")
+body.parent = armature
+modifier = body.modifiers.new("Fixture_Armature", "ARMATURE")
+modifier.object = armature
+body["comodel_component_id"] = body_component_id
+body["comodel_object_id"] = body_component_id + "-cc_base_body"
+body["comodel_semantic_type"] = "body"
+armature["comodel_component_id"] = body_component_id
+armature["comodel_object_id"] = body_component_id + "-body_rig"
+armature["comodel_semantic_type"] = "body_rig"
+bpy.context.scene["comodel_project_id"] = project_id
+bpy.context.scene["comodel_scene_version"] = 0
+
+def snapshot():
+    return {
+        "vertices": [[round(float(value), 7) for value in vertex.co] for vertex in body.data.vertices],
+        "faces": [list(polygon.vertices) for polygon in body.data.polygons],
+        "uvs": [[round(float(value), 7) for value in loop.uv] for loop in body.data.uv_layers["CharacterUV"].data],
+        "groups": [
+            [group.name, [
+                next((round(float(assignment.weight), 7) for assignment in vertex.groups if assignment.group == group.index), 0.0)
+                for vertex in body.data.vertices
+            ]]
+            for group in body.vertex_groups
+        ],
+        "shape_keys": [
+            [key.name, round(float(key.value), 7), [[round(float(value), 7) for value in point.co] for point in key.data]]
+            for key in body.data.shape_keys.key_blocks
+        ],
+        "parent": body.parent.name,
+        "modifiers": [[item.name, item.type, item.object.name if item.object else None] for item in body.modifiers],
+    }
+
+Path(snapshot_path).write_text(json.dumps(snapshot(), sort_keys=True), encoding="utf-8")
+bpy.ops.wm.save_as_mainfile(filepath=scene_path, check_existing=False)
+""",
+        encoding="utf-8",
+    )
+    initial_scene = committed_output / "scene.blend"
+    snapshot_path = tmp_path / "body_snapshot.json"
+    fixture = subprocess.run(
+        [
+            BLENDER_EXECUTABLE,
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(fixture_script),
+            "--",
+            str(initial_scene),
+            body_component_id,
+            project_id,
+            str(WORKER_ENTRY.parent),
+            str(snapshot_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+        env=child_env,
+    )
+    assert fixture.returncode == 0, fixture.stderr
+
+    def run_staged(
+        operation: str,
+        expected_scene_version: int,
+        arguments: dict,
+        scope_component_ids: list[str],
+        dependency_component_ids: list[str],
+    ):
+        transaction_id = str(uuid.uuid4())
+        attempt_id = str(uuid.uuid4())
+        workspace = tmp_path / "transactions" / transaction_id / attempt_id
+        output = workspace / "output"
+        output.mkdir(parents=True)
+        shutil.copy2(committed_output / "scene.blend", output / "scene.blend")
+        previous_preview = committed_output / "preview.glb"
+        if previous_preview.is_file():
+            shutil.copy2(previous_preview, output / "preview.glb")
+        job_path = create_job(
+            workspace,
+            operation=operation,
+            expected_scene_version=expected_scene_version,
+            arguments=arguments,
+            scope_component_ids=scope_component_ids,
+            dependency_component_ids=dependency_component_ids,
+        )
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        job.update({
+            "transaction_id": transaction_id,
+            "attempt_id": attempt_id,
+            "api_contract_version": WORKER_MODULE.API_TRANSACTION_CONTRACT_VERSION,
+            "worker_contract_version": WORKER_MODULE.WORKER_CONTRACT_VERSION,
+        })
+        job_path.write_text(json.dumps(job), encoding="utf-8")
+        process = run_worker(job_path, staged_only=True, env=child_env)
+        report_path = output / "result.json"
+        report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.is_file() else None
+        return process, output, report
+
+    scalp_process, scalp_output, scalp_report = run_staged(
+        "create_hair_scalp",
+        0,
+        {
+            "component_id": scalp_component_id,
+            "body_component_id": body_component_id,
+            "body_object_id": f"{body_component_id}-cc_base_body",
+        },
+        [scalp_component_id],
+        [body_component_id],
+    )
+    assert scalp_process.returncode == 0, scalp_process.stderr
+    assert scalp_report["worker_contract_version"] == "worker-staged-v2"
+    assert scalp_report["result"]["component_id"] == scalp_component_id
+    assert scalp_report["result"]["object_ids"] == [f"{scalp_component_id}-scalp"]
+    assert scalp_report["preview_export_status"] == "pass"
+    shutil.copy2(scalp_output / "scene_candidate.blend", committed_output / "scene.blend")
+    shutil.copy2(scalp_output / "preview_candidate.glb", committed_output / "preview.glb")
+
+    guide_process, guide_output, guide_report = run_staged(
+        "generate_hair_guides",
+        1,
+        {
+            "component_id": guide_component_id,
+            "scalp_component_id": scalp_component_id,
+            "scalp_object_id": f"{scalp_component_id}-scalp",
+            "guide_count": 8,
+            "guide_length": 0.1,
+            "seed": 23,
+        },
+        [guide_component_id],
+        [scalp_component_id],
+    )
+    assert guide_process.returncode == 0, guide_process.stderr
+    assert guide_report["result"]["object_ids"] == [f"{guide_component_id}-curves"]
+    assert guide_report["result"]["guide_count"] == 8
+    assert guide_report["preview_export_status"] == "pass"
+    shutil.copy2(guide_output / "scene_candidate.blend", committed_output / "scene.blend")
+
+    verify_script = tmp_path / "verify_hair_scene.py"
+    verify_script.write_text(
+        """
+import json
+import sys
+import bpy
+
+scene_path, snapshot_path, body_id, scalp_id, guides_id = sys.argv[sys.argv.index("--") + 1:]
+bpy.ops.wm.open_mainfile(filepath=scene_path)
+body = next(obj for obj in bpy.context.scene.objects if obj.get("comodel_component_id") == body_id and obj.get("comodel_semantic_type") == "body")
+scalp = next(obj for obj in bpy.context.scene.objects if obj.get("comodel_component_id") == scalp_id and obj.get("comodel_object_id") == scalp_id + "-scalp")
+guides = next(obj for obj in bpy.context.scene.objects if obj.get("comodel_component_id") == guides_id and obj.get("comodel_object_id") == guides_id + "-curves")
+assert guides.type == "CURVES"
+assert len(guides.data.curves) == 8
+assert guides.data.surface == scalp
+assert guides.data.surface_uv_map == scalp.data.uv_layers.active.name
+assert guides.hide_render
+assert scalp.parent is not None
+
+def snapshot():
+    return {
+        "vertices": [[round(float(value), 7) for value in vertex.co] for vertex in body.data.vertices],
+        "faces": [list(polygon.vertices) for polygon in body.data.polygons],
+        "uvs": [[round(float(value), 7) for value in loop.uv] for loop in body.data.uv_layers["CharacterUV"].data],
+        "groups": [
+            [group.name, [
+                next((round(float(assignment.weight), 7) for assignment in vertex.groups if assignment.group == group.index), 0.0)
+                for vertex in body.data.vertices
+            ]]
+            for group in body.vertex_groups
+        ],
+        "shape_keys": [
+            [key.name, round(float(key.value), 7), [[round(float(value), 7) for value in point.co] for point in key.data]]
+            for key in body.data.shape_keys.key_blocks
+        ],
+        "parent": body.parent.name,
+        "modifiers": [[item.name, item.type, item.object.name if item.object else None] for item in body.modifiers],
+    }
+
+assert snapshot() == json.load(open(snapshot_path, encoding="utf-8"))
+assert bpy.context.scene.get("comodel_scene_version") == 2
+print("Hair worker scene reopened with stable IDs, attached native guides, and unchanged body data.")
+""",
+        encoding="utf-8",
+    )
+    verify = subprocess.run(
+        [
+            BLENDER_EXECUTABLE,
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(verify_script),
+            "--",
+            str(committed_output / "scene.blend"),
+            str(snapshot_path),
+            body_component_id,
+            scalp_component_id,
+            guide_component_id,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+        env=child_env,
+    )
+    assert verify.returncode == 0, verify.stderr
 
 
 def test_worker_validates_semantic_skin_definition(tmp_path):

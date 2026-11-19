@@ -485,6 +485,211 @@ def test_modeling_operation_retry_is_idempotent_only_for_matching_request():
     assert error.value.detail["code"] == "OPERATION_ID_REUSED"
 
 
+def test_hair_scalp_operation_uses_stable_identity_and_idempotent_retry(monkeypatch):
+    body_component_id = str(uuid4())
+    scalp_component_id = str(uuid4())
+    body = {
+        "id": body_component_id,
+        "semantic_type": "body",
+        "object_ids": [f"{body_component_id}-cc_base_body"],
+        "source_asset": {"asset_id": "character_cc3_morphs_v1"},
+    }
+    project = main.Project(
+        name="Hair scalp identity",
+        target_profile="general_purpose",
+        scene_version=1,
+        components=[body],
+    )
+    operation_id = uuid4()
+    payload = main.CreateHairScalpTool(
+        tool_name="create_hair_scalp",
+        operation_id=operation_id,
+        expected_scene_version=1,
+        scope_component_ids=[],
+        dependency_component_ids=[body_component_id],
+        arguments={"body_component_id": body_component_id},
+    )
+    monkeypatch.setattr(main, "verify_project_adapter", lambda _project: None)
+    calls = []
+
+    def run_worker(transaction, **kwargs):
+        calls.append((transaction, kwargs))
+        component_id = transaction["allocated_component_id"]
+        return {
+            "result": {
+                "component_id": component_id,
+                "body_component_id": body_component_id,
+                "body_object_id": body["object_ids"][0],
+                "package_id": main.HAIR_TUTOR_PACKAGE_PIN["package_id"],
+                "package_version": main.HAIR_TUTOR_PACKAGE_PIN["version"],
+                "package_tree_sha256": main.HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"],
+                "object_ids": [f"{component_id}-scalp"],
+                "geometry_hash": "a" * 64,
+                "scene_structure_validation": {"status": "pass"},
+            },
+        }
+
+    monkeypatch.setattr(main, "_run_modeling_worker", run_worker)
+    first = main.execute_modeling_tool(
+        project,
+        payload,
+        {"allocated_component_id": scalp_component_id},
+    )
+    component = next(item for item in project.components if item["id"] == scalp_component_id)
+    assert component["semantic_type"] == "hair_scalp"
+    assert component["dependencies"] == [body_component_id]
+    assert component["object_ids"] == [f"{scalp_component_id}-scalp"]
+    assert component["source_asset"]["provenance_status"] == "unverified"
+    assert first["operation"]["scope_component_ids"] == [scalp_component_id]
+    assert first["operation"]["dependency_component_ids"] == [body_component_id]
+    assert calls[0][1]["arguments"]["body_object_id"] == body["object_ids"][0]
+
+    retry = main.execute_modeling_tool(project, payload)
+    assert retry == first
+    assert len(calls) == 1
+
+    changed = payload.model_copy(
+        update={
+            "arguments": payload.arguments.model_copy(
+                update={"body_component_id": str(uuid4())}
+            )
+        }
+    )
+    with pytest.raises(main.HTTPException) as error:
+        main.execute_modeling_tool(project, changed)
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "OPERATION_ID_REUSED"
+
+    duplicate = payload.model_copy(
+        update={
+            "operation_id": uuid4(),
+            "expected_scene_version": project.scene_version,
+        }
+    )
+    with pytest.raises(main.HTTPException) as error:
+        main.execute_modeling_tool(
+            project,
+            duplicate,
+            {"allocated_component_id": str(uuid4())},
+        )
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "SCALP_ALREADY_EXISTS"
+
+
+def test_hair_guide_operation_validates_package_and_rejects_duplicate_component(monkeypatch):
+    scalp_component_id = str(uuid4())
+    guide_component_id = str(uuid4())
+    scalp = {
+        "id": scalp_component_id,
+        "semantic_type": "hair_scalp",
+        "object_ids": [f"{scalp_component_id}-scalp"],
+        "source_asset": {
+            "package_id": main.HAIR_TUTOR_PACKAGE_PIN["package_id"],
+            "version": main.HAIR_TUTOR_PACKAGE_PIN["version"],
+            "package_tree_sha256": main.HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"],
+        },
+    }
+    project = main.Project(
+        name="Native hair guide identity",
+        target_profile="general_purpose",
+        scene_version=2,
+        components=[scalp],
+    )
+    payload = main.GenerateHairGuidesTool(
+        tool_name="generate_hair_guides",
+        operation_id=uuid4(),
+        expected_scene_version=2,
+        scope_component_ids=[],
+        dependency_component_ids=[scalp_component_id],
+        arguments={
+            "scalp_component_id": scalp_component_id,
+            "guide_count": 24,
+            "guide_length": 0.2,
+            "seed": 101,
+        },
+    )
+    monkeypatch.setattr(main, "verify_project_adapter", lambda _project: None)
+    calls = []
+
+    def run_worker(transaction, **kwargs):
+        calls.append(kwargs)
+        component_id = transaction["allocated_component_id"]
+        return {
+            "result": {
+                "component_id": component_id,
+                "scalp_component_id": scalp_component_id,
+                "scalp_object_id": scalp["object_ids"][0],
+                "package_id": main.HAIR_TUTOR_PACKAGE_PIN["package_id"],
+                "package_version": main.HAIR_TUTOR_PACKAGE_PIN["version"],
+                "package_tree_sha256": main.HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"],
+                "guide_count": 24,
+                "guide_length": 0.2,
+                "seed": 101,
+                "object_ids": [f"{component_id}-curves"],
+                "geometry_hash": "b" * 64,
+                "scene_structure_validation": {"status": "pass"},
+            },
+        }
+
+    monkeypatch.setattr(main, "_run_modeling_worker", run_worker)
+    result = main.execute_modeling_tool(
+        project,
+        payload,
+        {"allocated_component_id": guide_component_id},
+    )
+    component = next(item for item in project.components if item["id"] == guide_component_id)
+    assert component["semantic_type"] == "hair_guides"
+    assert component["dependencies"] == [scalp_component_id]
+    assert component["guide_settings"] == {
+        "guide_count": 24,
+        "guide_length": 0.2,
+        "seed": 101,
+    }
+    assert result["operation"]["scope_component_ids"] == [guide_component_id]
+    assert result["operation"]["dependency_component_ids"] == [scalp_component_id]
+    assert calls[0]["arguments"]["scalp_object_id"] == scalp["object_ids"][0]
+
+    duplicate = payload.model_copy(
+        update={
+            "operation_id": uuid4(),
+            "expected_scene_version": project.scene_version,
+        }
+    )
+    with pytest.raises(main.HTTPException) as error:
+        main.execute_modeling_tool(
+            project,
+            duplicate,
+            {"allocated_component_id": str(uuid4())},
+        )
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "GUIDES_ALREADY_EXIST"
+
+
+def test_hair_guide_request_schema_bounds_parameters_and_forbids_extra_fields():
+    base = {
+        "tool_name": "generate_hair_guides",
+        "operation_id": str(uuid4()),
+        "expected_scene_version": 1,
+        "scope_component_ids": [],
+        "dependency_component_ids": [str(uuid4())],
+        "arguments": {"scalp_component_id": str(uuid4())},
+    }
+    assert main.GenerateHairGuidesTool.model_validate(base).arguments.guide_count == 16
+    for update in (
+        {"guide_count": 0},
+        {"guide_count": 129},
+        {"guide_count": True},
+        {"guide_length": float("nan")},
+        {"guide_length": 2.01},
+        {"seed": True},
+        {"unapproved": "value"},
+    ):
+        invalid = json.loads(json.dumps(base))
+        invalid["arguments"].update(update)
+        with pytest.raises(ValueError):
+            main.GenerateHairGuidesTool.model_validate(invalid)
+
+
 def test_model_catalog_lists_installed_approval_gated_character_assets():
     response = client.get("/api/v1/models")
 

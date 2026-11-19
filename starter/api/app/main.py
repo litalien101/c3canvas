@@ -83,6 +83,8 @@ CC5_MORPH_DELTAS_FILENAME = "CC5_RL_CC3_Plus_Morph_Deltas.zip"
 CC5_BODY_PRESETS_PATH = SHARED_ROOT / "cc5_body_presets.json"
 EYE_ASSETS_PATH = SHARED_ROOT / "eye_assets.json"
 SKIN_ASSETS_PATH = SHARED_ROOT / "skin_assets.json"
+HAIR_TUTOR_PACKAGE_PIN_PATH = SHARED_ROOT / "hair_tutor_package.json"
+HAIR_TUTOR_PACKAGE_PIN = json.loads(HAIR_TUTOR_PACKAGE_PIN_PATH.read_text(encoding="utf-8"))
 ASSET_CONFIG = {
     "character_cc3_morphs_v1": {
         "manifest_path": SHARED_ROOT / "cc3_morph_manifest.json",
@@ -681,6 +683,39 @@ class AttachEyeAssetTool(BaseModel):
     arguments: AttachEyeAssetArguments
 
 
+class CreateHairScalpArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body_component_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class CreateHairScalpTool(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool_name: Literal["create_hair_scalp"]
+    operation_id: UUID
+    expected_scene_version: int = Field(ge=0)
+    scope_component_ids: list[str] = Field(max_length=0)
+    dependency_component_ids: list[str] = Field(min_length=1, max_length=1)
+    arguments: CreateHairScalpArguments
+
+
+class GenerateHairGuidesArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scalp_component_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    guide_count: int = Field(default=16, ge=1, le=128, strict=True)
+    guide_length: float = Field(default=0.15, ge=0.01, le=2.0, allow_inf_nan=False)
+    seed: int = Field(default=0, ge=-(2**31), le=2**31 - 1, strict=True)
+
+
+class GenerateHairGuidesTool(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool_name: Literal["generate_hair_guides"]
+    operation_id: UUID
+    expected_scene_version: int = Field(ge=0)
+    scope_component_ids: list[str] = Field(max_length=0)
+    dependency_component_ids: list[str] = Field(min_length=1, max_length=1)
+    arguments: GenerateHairGuidesArguments
+
+
 ModelingToolRequest = Annotated[
     Union[
         ImportBaseModelTool,
@@ -688,6 +723,8 @@ ModelingToolRequest = Annotated[
         ApplyCC3BodyPresetTool,
         BakeCC3MorphControlsTool,
         AttachEyeAssetTool,
+        CreateHairScalpTool,
+        GenerateHairGuidesTool,
     ],
     Field(discriminator="tool_name"),
 ]
@@ -1746,10 +1783,21 @@ def execute_modeling_tool(
             detail={"code": "STALE_SCENE_VERSION", "current_scene_version": project.scene_version},
         )
 
+    is_hair_operation = payload.tool_name in {"create_hair_scalp", "generate_hair_guides"}
+    if is_hair_operation and transaction is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "BLENDER_REQUIRED",
+                "message": "Hair creation is available only through the staged Blender transaction pipeline.",
+            },
+        )
     verify_project_adapter(project)
     created_component_ids: list[str] = []
     updated_component_ids: list[str] = []
     dependency_component_ids = payload.dependency_component_ids
+    operation_scope_component_ids = payload.scope_component_ids
+    phase = None
     blender_result: dict[str, Any]
     rollback_checkpoint_id: str
     if payload.tool_name == "attach_eye_asset":
@@ -2221,6 +2269,263 @@ def execute_modeling_tool(
             + (f" Compiled eye asset {eye_asset['name']}." if eye_asset is not None else "")
             + (f" Applied {skin_asset['name']}." if skin_asset is not None else "")
         )
+    elif payload.tool_name in {"create_hair_scalp", "generate_hair_guides"}:
+        if transaction is None or not transaction.get("allocated_component_id"):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TRANSACTION_REQUIRED", "message": "Hair component identity must be allocated by the transaction coordinator."},
+            )
+        component_id = transaction["allocated_component_id"]
+        operation_scope_component_ids = [component_id]
+
+        def verify_hair_worker_result(
+            worker_result: object,
+            *,
+            expected_object_id: str,
+        ) -> dict[str, Any]:
+            valid_hash = (
+                isinstance(worker_result, dict)
+                and isinstance(worker_result.get("geometry_hash"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", worker_result["geometry_hash"]) is not None
+            )
+            if (
+                not isinstance(worker_result, dict)
+                or worker_result.get("component_id") != component_id
+                or worker_result.get("package_id") != HAIR_TUTOR_PACKAGE_PIN["package_id"]
+                or worker_result.get("package_version") != HAIR_TUTOR_PACKAGE_PIN["version"]
+                or worker_result.get("package_tree_sha256")
+                != HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"]
+                or worker_result.get("object_ids") != [expected_object_id]
+                or not valid_hash
+            ):
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "HAIR_OPERATION_VALIDATION_FAILED", "message": "Blender did not confirm the pinned hair component contract."},
+                )
+            return worker_result
+
+        if payload.tool_name == "create_hair_scalp":
+            body_component_id = payload.arguments.body_component_id
+            body = next(
+                (
+                    item
+                    for item in project.components
+                    if item.get("id") == body_component_id
+                    and item.get("semantic_type") == "body"
+                ),
+                None,
+            )
+            if body is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"code": "BODY_COMPONENT_NOT_FOUND", "message": "Create a character before adding a hair scalp."},
+                )
+            if payload.dependency_component_ids != [body_component_id] or payload.scope_component_ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "INVALID_HAIR_SCOPE", "message": "Scalp creation must depend on exactly its character body and create a new component."},
+                )
+            if body.get("source_asset", {}).get("asset_id") not in ASSET_CONFIG:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "HAIR_BODY_UNSUPPORTED", "message": "The selected body source is not supported by the pinned scalp asset."},
+                )
+            body_object_id = f"{body_component_id}-cc_base_body"
+            if body_object_id not in body.get("object_ids", []):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "HAIR_BODY_OBJECT_UNAVAILABLE", "message": "The character has no stable CC_Base_Body object identity."},
+                )
+            if any(
+                item.get("semantic_type") == "hair_scalp"
+                and item.get("parent_id") == body_component_id
+                for item in project.components
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "SCALP_ALREADY_EXISTS", "message": "This character already has a hair scalp component."},
+                )
+            component = create_component_record(
+                display_name="Hair Scalp",
+                semantic_type="hair_scalp",
+                phase_key="body_blockout",
+                dependencies=[body_component_id],
+                parent_id=body_component_id,
+                fit_target_component_id=body_component_id,
+                status="needs_review",
+                notes="Owner-reviewed Copilot Hair Tutor 0.1.8 scalp asset; source provenance is unverified.",
+                component_id=component_id,
+            )
+            rollback_checkpoint_id = save_checkpoint(project, "before-create_hair_scalp")["id"]
+            arguments = {
+                "component_id": component_id,
+                "body_component_id": body_component_id,
+                "body_object_id": body_object_id,
+            }
+            dependency_component_ids = [body_component_id]
+            try:
+                blender_result = _run_modeling_worker(
+                    transaction,
+                    data_directory=REPOSITORY.path.parent,
+                    project_id=project.id,
+                    operation_id=payload.operation_id,
+                    expected_scene_version=project.scene_version,
+                    operation=payload.tool_name,
+                    arguments=arguments,
+                    scope_component_ids=operation_scope_component_ids,
+                    dependency_component_ids=dependency_component_ids,
+                )
+            except BlenderAdapterError as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "BLENDER_OPERATION_FAILED", "message": str(error)},
+                ) from error
+            worker_result = verify_hair_worker_result(
+                blender_result.get("result"),
+                expected_object_id=f"{component_id}-scalp",
+            )
+            if (
+                worker_result.get("body_component_id") != body_component_id
+                or worker_result.get("body_object_id") != body_object_id
+            ):
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "HAIR_OPERATION_VALIDATION_FAILED", "message": "Blender scalp source identity did not match the requested character object."},
+                )
+            component["geometry_hash"] = worker_result["geometry_hash"]
+            component["object_ids"] = worker_result["object_ids"]
+            component["source_asset"] = {
+                "package_id": HAIR_TUTOR_PACKAGE_PIN["package_id"],
+                "version": HAIR_TUTOR_PACKAGE_PIN["version"],
+                "archive_sha256": HAIR_TUTOR_PACKAGE_PIN["archive_sha256"],
+                "package_tree_sha256": HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"],
+                "approval_status": HAIR_TUTOR_PACKAGE_PIN["approval_status"],
+                "provenance_status": HAIR_TUTOR_PACKAGE_PIN["provenance"]["status"],
+                "source_component_id": body_component_id,
+                "source_object_id": body_object_id,
+            }
+            dependency_component_ids = [body_component_id]
+            summary = "Created a separate rigged native hair scalp from the selected character body."
+        else:
+            scalp_component_id = payload.arguments.scalp_component_id
+            scalp = next(
+                (
+                    item
+                    for item in project.components
+                    if item.get("id") == scalp_component_id
+                    and item.get("semantic_type") == "hair_scalp"
+                ),
+                None,
+            )
+            if scalp is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"code": "SCALP_COMPONENT_NOT_FOUND", "message": "Create a hair scalp before generating guides."},
+                )
+            if payload.dependency_component_ids != [scalp_component_id] or payload.scope_component_ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "INVALID_HAIR_SCOPE", "message": "Guide generation must depend on exactly its scalp and create a new component."},
+                )
+            source_asset = scalp.get("source_asset", {})
+            if (
+                source_asset.get("package_id") != HAIR_TUTOR_PACKAGE_PIN["package_id"]
+                or source_asset.get("version") != HAIR_TUTOR_PACKAGE_PIN["version"]
+                or source_asset.get("package_tree_sha256")
+                != HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"]
+                or scalp.get("object_ids") != [f"{scalp_component_id}-scalp"]
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "HAIR_PACKAGE_MISMATCH", "message": "The selected scalp does not match the pinned Hair Tutor package contract."},
+                )
+            if any(
+                item.get("semantic_type") == "hair_guides"
+                and item.get("parent_id") == scalp_component_id
+                for item in project.components
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "GUIDES_ALREADY_EXIST", "message": "This scalp already has a native Hair Curves component."},
+                )
+            scalp_object_id = scalp["object_ids"][0]
+            component = create_component_record(
+                display_name="Hair Guides",
+                semantic_type="hair_guides",
+                phase_key="body_blockout",
+                dependencies=[scalp_component_id],
+                parent_id=scalp_component_id,
+                fit_target_component_id=scalp_component_id,
+                status="needs_review",
+                notes="Editable native Hair Curves guides; visible/renderable hair conversion is not included.",
+                component_id=component_id,
+            )
+            rollback_checkpoint_id = save_checkpoint(project, "before-generate_hair_guides")["id"]
+            arguments = {
+                "component_id": component_id,
+                "scalp_component_id": scalp_component_id,
+                "scalp_object_id": scalp_object_id,
+                "guide_count": payload.arguments.guide_count,
+                "guide_length": payload.arguments.guide_length,
+                "seed": payload.arguments.seed,
+            }
+            dependency_component_ids = [scalp_component_id]
+            try:
+                blender_result = _run_modeling_worker(
+                    transaction,
+                    data_directory=REPOSITORY.path.parent,
+                    project_id=project.id,
+                    operation_id=payload.operation_id,
+                    expected_scene_version=project.scene_version,
+                    operation=payload.tool_name,
+                    arguments=arguments,
+                    scope_component_ids=operation_scope_component_ids,
+                    dependency_component_ids=dependency_component_ids,
+                )
+            except BlenderAdapterError as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "BLENDER_OPERATION_FAILED", "message": str(error)},
+                ) from error
+            worker_result = verify_hair_worker_result(
+                blender_result.get("result"),
+                expected_object_id=f"{component_id}-curves",
+            )
+            if (
+                worker_result.get("scalp_component_id") != scalp_component_id
+                or worker_result.get("scalp_object_id") != scalp_object_id
+                or worker_result.get("guide_count") != payload.arguments.guide_count
+                or worker_result.get("guide_length") != payload.arguments.guide_length
+                or worker_result.get("seed") != payload.arguments.seed
+            ):
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "HAIR_OPERATION_VALIDATION_FAILED", "message": "Blender guide settings or scalp identity did not match the request."},
+                )
+            component["geometry_hash"] = worker_result["geometry_hash"]
+            component["object_ids"] = worker_result["object_ids"]
+            component["guide_settings"] = {
+                "guide_count": worker_result["guide_count"],
+                "guide_length": worker_result["guide_length"],
+                "seed": worker_result["seed"],
+            }
+            component["source_asset"] = {
+                "package_id": HAIR_TUTOR_PACKAGE_PIN["package_id"],
+                "version": HAIR_TUTOR_PACKAGE_PIN["version"],
+                "archive_sha256": HAIR_TUTOR_PACKAGE_PIN["archive_sha256"],
+                "package_tree_sha256": HAIR_TUTOR_PACKAGE_PIN["package_tree_sha256"],
+                "approval_status": HAIR_TUTOR_PACKAGE_PIN["approval_status"],
+                "provenance_status": HAIR_TUTOR_PACKAGE_PIN["provenance"]["status"],
+                "source_component_id": scalp_component_id,
+                "source_object_id": scalp_object_id,
+            }
+            dependency_component_ids = [scalp_component_id]
+            summary = f"Generated {worker_result['guide_count']} editable native Hair Curves guides."
+
+        project.components.append(component)
+        created_component_ids.append(component_id)
+        changed_component_ids = created_component_ids
+        project.updated_at = datetime.now(timezone.utc)
     else:
         component_id = payload.arguments.component_id
         if payload.scope_component_ids != [component_id] or payload.dependency_component_ids:
@@ -2488,6 +2793,24 @@ def execute_modeling_tool(
                 "affected_component_ids": updated_component_ids,
             }
         )
+    elif payload.tool_name == "create_hair_scalp":
+        validation_results.append(
+            {
+                "check_id": "hair_scalp_persisted",
+                "status": "pass",
+                "summary": "The pinned package created a rigged scalp as a separate stable component.",
+                "affected_component_ids": created_component_ids,
+            }
+        )
+    elif payload.tool_name == "generate_hair_guides":
+        validation_results.append(
+            {
+                "check_id": "native_hair_guides_persisted",
+                "status": "pass",
+                "summary": "Editable native Hair Curves guides are attached to the declared scalp component.",
+                "affected_component_ids": created_component_ids,
+            }
+        )
     else:
         validation_results.append(
             {
@@ -2521,7 +2844,7 @@ def execute_modeling_tool(
         "mode": project.mode,
         "expected_scene_version": payload.expected_scene_version,
         "scene_version": project.scene_version,
-        "scope_component_ids": payload.scope_component_ids,
+        "scope_component_ids": operation_scope_component_ids,
         "dependency_component_ids": dependency_component_ids,
         "created_component_ids": created_component_ids,
         "updated_component_ids": updated_component_ids,
@@ -4406,7 +4729,11 @@ def call_modeling_tool(project_id: UUID, payload: ModelingToolRequest) -> Modeli
             transaction_id = uuid4()
             attempt_id = uuid4()
             allocated_component_id = None
-            if payload.tool_name == "import_base_model":
+            if payload.tool_name in {
+                "import_base_model",
+                "create_hair_scalp",
+                "generate_hair_guides",
+            }:
                 allocated_component_id = (
                     stored_operation["allocated_component_id"]
                     if stored_operation is not None
