@@ -107,6 +107,37 @@ def test_staged_worker_job_requires_transaction_and_attempt_identity(tmp_path: P
 
 
 @pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
+def test_staged_worker_writes_failure_report(tmp_path: Path):
+    transaction_id = str(uuid.uuid4())
+    attempt_id = str(uuid.uuid4())
+    workspace = tmp_path / "transactions" / transaction_id / attempt_id
+    workspace.mkdir(parents=True)
+    job_path = create_job(
+        workspace,
+        operation="unsupported_operation",
+        expected_scene_version=0,
+        arguments={},
+    )
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    job.update({
+        "transaction_id": transaction_id,
+        "attempt_id": attempt_id,
+        "api_contract_version": WORKER_MODULE.API_TRANSACTION_CONTRACT_VERSION,
+        "worker_contract_version": WORKER_MODULE.WORKER_CONTRACT_VERSION,
+    })
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+
+    process = run_worker(job_path, staged_only=True)
+
+    failure_path = workspace / "output" / "worker-error.json"
+    assert process.returncode != 0
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert failure["status"] == "failed"
+    assert failure["error_type"] == "ValueError"
+    assert failure["error"]
+
+
+@pytest.mark.skipif(not BLENDER_EXECUTABLE, reason="Blender executable is not installed")
 def test_staged_worker_does_not_promote_scene_or_preview(tmp_path: Path):
     committed_root = tmp_path / "committed"
     committed_output = committed_root / "output"
@@ -637,7 +668,12 @@ for index, name in enumerate(sorted(required_bones)):
     bone = armature_data.edit_bones.new(name)
     bone.head = (0.0, 0.0, float(index))
     bone.tail = (0.0, 0.0, float(index) + 0.5)
+drift_bone = armature_data.edit_bones.new("Fixture_Rounding_Drift")
+drift_bone.head = (0.0, 0.0, float(len(required_bones) + 1))
+drift_bone.tail = (0.0, 0.0, float(len(required_bones) + 1) + 0.5)
 bpy.ops.object.mode_set(mode="OBJECT")
+armature.pose.bones["Fixture_Rounding_Drift"].location.x = 0.0001220703125
+bpy.context.view_layer.update()
 body.parent = armature
 modifier = body.modifiers.new("Fixture_Armature", "ARMATURE")
 modifier.object = armature
@@ -665,6 +701,10 @@ def snapshot():
         "shape_keys": [
             [key.name, round(float(key.value), 7), [[round(float(value), 7) for value in point.co] for point in key.data]]
             for key in body.data.shape_keys.key_blocks
+        ],
+        "rig_pose": [
+            [bone.name, [[round(float(value), 7) for value in row] for row in bone.matrix]]
+            for bone in armature.pose.bones
         ],
         "parent": body.parent.name,
         "modifiers": [[item.name, item.type, item.object.name if item.object else None] for item in body.modifiers],
@@ -708,13 +748,14 @@ bpy.ops.wm.save_as_mainfile(filepath=scene_path, check_existing=False)
         arguments: dict,
         scope_component_ids: list[str],
         dependency_component_ids: list[str],
+        scene_source: Path | None = None,
     ):
         transaction_id = str(uuid.uuid4())
         attempt_id = str(uuid.uuid4())
         workspace = tmp_path / "transactions" / transaction_id / attempt_id
         output = workspace / "output"
         output.mkdir(parents=True)
-        shutil.copy2(committed_output / "scene.blend", output / "scene.blend")
+        shutil.copy2(scene_source or committed_output / "scene.blend", output / "scene.blend")
         previous_preview = committed_output / "preview.glb"
         if previous_preview.is_file():
             shutil.copy2(previous_preview, output / "preview.glb")
@@ -813,6 +854,10 @@ def snapshot():
             [key.name, round(float(key.value), 7), [[round(float(value), 7) for value in point.co] for point in key.data]]
             for key in body.data.shape_keys.key_blocks
         ],
+        "rig_pose": [
+            [bone.name, [[round(float(value), 7) for value in row] for row in bone.matrix]]
+            for bone in body.parent.pose.bones
+        ],
         "parent": body.parent.name,
         "modifiers": [[item.name, item.type, item.object.name if item.object else None] for item in body.modifiers],
     }
@@ -847,6 +892,65 @@ print("Hair worker scene reopened with stable IDs, attached native guides, and u
         env=child_env,
     )
     assert verify.returncode == 0, verify.stderr
+
+    large_pose_scene = tmp_path / "large_pose_scene.blend"
+    large_pose_script = tmp_path / "set_large_pose_drift.py"
+    large_pose_script.write_text(
+        """
+import sys
+import bpy
+
+scene_path, output_path = sys.argv[sys.argv.index("--") + 1:]
+bpy.ops.wm.open_mainfile(filepath=scene_path)
+armature = next(obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE")
+armature.pose.bones["Fixture_Rounding_Drift"].location.x = 0.01
+bpy.context.view_layer.update()
+bpy.ops.wm.save_as_mainfile(filepath=output_path, check_existing=False)
+""",
+        encoding="utf-8",
+    )
+    drift_fixture = subprocess.run(
+        [
+            BLENDER_EXECUTABLE,
+            "--background",
+            "--factory-startup",
+            "--disable-autoexec",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(large_pose_script),
+            "--",
+            str(scalp_output / "scene_candidate.blend"),
+            str(large_pose_scene),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+        env=child_env,
+    )
+    assert drift_fixture.returncode == 0, drift_fixture.stderr
+    large_guide_component_id = str(uuid.uuid4())
+    large_drift_process, large_drift_output, _ = run_staged(
+        "generate_hair_guides",
+        1,
+        {
+            "component_id": large_guide_component_id,
+            "scalp_component_id": scalp_component_id,
+            "scalp_object_id": f"{scalp_component_id}-scalp",
+            "guide_count": 8,
+            "guide_length": 0.1,
+            "seed": 23,
+        },
+        [large_guide_component_id],
+        [scalp_component_id],
+        scene_source=large_pose_scene,
+    )
+    failure_path = large_drift_output / "worker-error.json"
+    assert large_drift_process.returncode != 0
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert "exceeds the temporary normalization limit" in failure["error"]
+    assert not (large_drift_output / "scene_candidate.blend").exists()
 
 
 def test_worker_validates_semantic_skin_definition(tmp_path):

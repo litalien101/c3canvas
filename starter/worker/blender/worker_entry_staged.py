@@ -10,4 +10,4 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError("The Blender worker implementation could not be loaded.")
 WORKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WORKER)
-raise SystemExit(WORKER.main(force_staged_only=True))
+raise SystemExit(WORKER.run_worker_cli(force_staged_only=True))

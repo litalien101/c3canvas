@@ -1509,6 +1509,34 @@ def test_blender_adapter_accepts_preview_result_without_scene_output(tmp_path):
     assert parsed == result
 
 
+def test_blender_adapter_surfaces_worker_failure_report(tmp_path):
+    workspace = tmp_path / "workspace"
+    output = workspace / "output"
+    output.mkdir(parents=True)
+    expected_error = (
+        "Hair guide generation requires a rest-pose rig; "
+        "bone 'CC_Base_R_Index3' exceeds the temporary normalization limit."
+    )
+    (output / "worker-error.json").write_text(
+        json.dumps({
+            "status": "failed",
+            "error_type": "ValueError",
+            "error": expected_error,
+        }),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(blender_adapter.BlenderAdapterError, match="CC_Base_R_Index3"):
+        blender_adapter._read_worker_result(
+            workspace=workspace,
+            job_id=str(uuid4()),
+            project_id=str(uuid4()),
+            operation_id=str(uuid4()),
+            operation="generate_hair_guides",
+            expected_scene_version=1,
+        )
+
+
 def test_blender_adapter_rejects_a_stale_transaction_attempt_result(tmp_path):
     workspace = tmp_path / "workspace"
     output = workspace / "output"
