@@ -703,7 +703,11 @@ def snapshot():
             for key in body.data.shape_keys.key_blocks
         ],
         "rig_pose": [
-            [bone.name, [[round(float(value), 7) for value in row] for row in bone.matrix]]
+            [
+                bone.name,
+                [[round(float(value), 7) for value in row] for row in bone.matrix],
+                [[round(float(value), 7) for value in row] for row in bone.matrix_basis],
+            ]
             for bone in armature.pose.bones
         ],
         "parent": body.parent.name,
@@ -855,7 +859,11 @@ def snapshot():
             for key in body.data.shape_keys.key_blocks
         ],
         "rig_pose": [
-            [bone.name, [[round(float(value), 7) for value in row] for row in bone.matrix]]
+            [
+                bone.name,
+                [[round(float(value), 7) for value in row] for row in bone.matrix],
+                [[round(float(value), 7) for value in row] for row in bone.matrix_basis],
+            ]
             for bone in body.parent.pose.bones
         ],
         "parent": body.parent.name,

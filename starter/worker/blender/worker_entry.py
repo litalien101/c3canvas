@@ -600,10 +600,8 @@ def normalize_hair_rig_pose_for_guides(bpy, scalp):
             continue
         armatures.append(armature)
         for pose_bone in armature.pose.bones:
-            rest_matrix = pose_bone.bone.matrix_local
-            pose_matrix = pose_bone.matrix
             drift = max(
-                abs(pose_matrix[row][column] - rest_matrix[row][column])
+                abs(pose_bone.matrix[row][column] - pose_bone.bone.matrix_local[row][column])
                 for row in range(4)
                 for column in range(4)
             )
@@ -615,17 +613,23 @@ def normalize_hair_rig_pose_for_guides(bpy, scalp):
                     f"bone {pose_bone.name!r} exceeds the temporary "
                     "normalization limit."
                 )
-            pose_adjustments.append((pose_bone, pose_matrix.copy()))
+            pose_adjustments.append((
+                pose_bone,
+                pose_bone.matrix.copy(),
+                pose_bone.matrix_basis.copy(),
+            ))
 
     try:
-        for pose_bone, _original_matrix in pose_adjustments:
+        for pose_bone, _original_matrix, _original_basis in pose_adjustments:
             pose_bone.matrix = pose_bone.bone.matrix_local
         if pose_adjustments:
             bpy.context.view_layer.update()
         yield
     finally:
-        for pose_bone, original_matrix in pose_adjustments:
-            pose_bone.matrix = original_matrix
+        for pose_bone, original_matrix, original_basis in pose_adjustments:
+            pose_bone.matrix = original_matrix.copy()
+            bpy.context.view_layer.update()
+            pose_bone.matrix_basis = original_basis.copy()
         if pose_adjustments:
             bpy.context.view_layer.update()
 
