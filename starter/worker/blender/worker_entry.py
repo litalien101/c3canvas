@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from array import array
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -70,6 +71,8 @@ HAIR_TUTOR_PACKAGE_ID = "blender_copilot_chat"
 HAIR_TUTOR_PACKAGE_VERSION = "0.1.8"
 HAIR_TUTOR_APPROVAL_STATUS = "owner_reviewed_origin_unverified"
 HAIR_TUTOR_PACKAGE_MODULE = None
+HAIR_GUIDE_REST_POSE_TOLERANCE = 1e-4
+HAIR_GUIDE_TEMPORARY_POSE_DRIFT_LIMIT = 1e-3
 CC5_BODY_PRESETS_MANIFEST = json.loads(
     (CC3_SHARED_ROOT / "cc5_body_presets.json").read_text(encoding="utf-8")
 )
@@ -585,6 +588,48 @@ def create_hair_scalp(bpy, args: dict, hair_tutor, pin: dict) -> dict:
     }
 
 
+@contextmanager
+def normalize_hair_rig_pose_for_guides(bpy, scalp):
+    armatures = []
+    pose_adjustments = []
+    for modifier in scalp.modifiers:
+        armature = modifier.object if modifier.type == "ARMATURE" else None
+        if armature is None or armature.type != "ARMATURE" or any(
+            armature is existing for existing in armatures
+        ):
+            continue
+        armatures.append(armature)
+        for pose_bone in armature.pose.bones:
+            rest_matrix = pose_bone.bone.matrix_local
+            pose_matrix = pose_bone.matrix
+            drift = max(
+                abs(pose_matrix[row][column] - rest_matrix[row][column])
+                for row in range(4)
+                for column in range(4)
+            )
+            if drift <= HAIR_GUIDE_REST_POSE_TOLERANCE:
+                continue
+            if drift > HAIR_GUIDE_TEMPORARY_POSE_DRIFT_LIMIT:
+                raise ValueError(
+                    "Hair guide generation requires a rest-pose rig; "
+                    f"bone {pose_bone.name!r} exceeds the temporary "
+                    "normalization limit."
+                )
+            pose_adjustments.append((pose_bone, pose_matrix.copy()))
+
+    try:
+        for pose_bone, _original_matrix in pose_adjustments:
+            pose_bone.matrix = pose_bone.bone.matrix_local
+        if pose_adjustments:
+            bpy.context.view_layer.update()
+        yield
+    finally:
+        for pose_bone, original_matrix in pose_adjustments:
+            pose_bone.matrix = original_matrix
+        if pose_adjustments:
+            bpy.context.view_layer.update()
+
+
 def generate_hair_guides(bpy, args: dict, hair_tutor, pin: dict) -> dict:
     component_id = safe_component_id(args["component_id"])
     scalp_component_id = safe_component_id(args["scalp_component_id"])
@@ -615,18 +660,19 @@ def generate_hair_guides(bpy, args: dict, hair_tutor, pin: dict) -> dict:
         raise ValueError("Hair scalp was not created with the pinned Hair Tutor package")
 
     collection = get_or_create_collection(bpy, f"CoModel/Components/{component_id}")
-    hair_object = hair_tutor.create_hair_curves_object(
-        scalp,
-        collection,
-        name=f"Hair Guides {component_id[:8]}",
-    )
-    hair_tutor.attach_hair_curves_to_scalp(hair_object, scalp)
-    hair_tutor.generate_scalp_guides(
-        hair_object,
-        guide_count=args["guide_count"],
-        guide_length=args["guide_length"],
-        seed=args["seed"],
-    )
+    with normalize_hair_rig_pose_for_guides(bpy, scalp):
+        hair_object = hair_tutor.create_hair_curves_object(
+            scalp,
+            collection,
+            name=f"Hair Guides {component_id[:8]}",
+        )
+        hair_tutor.attach_hair_curves_to_scalp(hair_object, scalp)
+        hair_tutor.generate_scalp_guides(
+            hair_object,
+            guide_count=args["guide_count"],
+            guide_length=args["guide_length"],
+            seed=args["seed"],
+        )
     hair_object["comodel_component_id"] = component_id
     hair_object["comodel_object_id"] = f"{component_id}-curves"
     hair_object["comodel_semantic_type"] = "hair_guides"
@@ -2912,9 +2958,9 @@ def main(*, force_staged_only: bool = False) -> int:
     return 0
 
 
-if __name__ == "__main__":
+def run_worker_cli(*, force_staged_only: bool = False) -> int:
     try:
-        raise SystemExit(main())
+        return main(force_staged_only=force_staged_only)
     except Exception as exc:
         separator_index = sys.argv.index("--") if "--" in sys.argv else -1
         job_path = (
@@ -2925,4 +2971,8 @@ if __name__ == "__main__":
         write_failure_report(job_path, exc)
         error = {"status": "failed", "error_type": type(exc).__name__, "error": str(exc)[:1000]}
         print(json.dumps(error), file=sys.stderr)
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_worker_cli())
